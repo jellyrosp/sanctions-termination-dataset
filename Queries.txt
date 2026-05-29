@@ -1,0 +1,40 @@
+Queries
+
+
+1) quali casi (SELECT: case_id) hanno i campi "ter_date" or "de_facto_ter" non nulli or "ongoing" == True, raggruppa per sender  
+
+2) per ogni caso, visualizza durata. calcola la durata di ogni caso. per i casi con "ongoing" == True, considera intervallo start_date ---> 2018; per gli altri considera intervallo "start_date" --> "end_date". raggruppa per sender 
+
+3) calcola distributione casi con gradual == True (e complementare), raggruppa per sender 
+
+4) calcola distributione casi con expiry == True (e complementare), raggruppa per sender 
+
+5) calcola distributione casi con review == True (e complementare), raggruppa per sender 
+
+6) calcola distribuzione delle measures sui casi
+
+7) calcola distribuzione delle measures (x <= 2 / x<= 5 / x<= 8 / x <= 11) sui casi
+
+8) calcola distribuzione dei goals sui casi
+
+9) calcola distribuzione dei goals (x <= 2 / x<= 5 / x<= 8) sui casi
+
+10) calcola distributione casi con adapt_goal == True (e complementare), raggruppa per sender
+
+11) calcola distributione casi con targer_salience == True (e complementare), raggruppa per target
+
+12) calcola distributione casi con sender_salience == True (e complementare), raggruppa per sender
+
+13) calcola distributione casi con requirement_termination == True (e complementare), raggruppa per sender
+
+14) calcola distributione casi con negotiations == True (e complementare), raggruppa per sender
+
+15) calcola distribuzione degli outcome sui casi, raggruppa per sender
+
+16) calcola distribuzione del cost_sender sui casi, raggruppa per sender
+
+17) calcola distribuzione del inst_investment sui casi, raggruppa per sender
+
+18) calcola distribuzione del cost_target sui casi, raggruppa per target
+
+19) calcola distribuzione del multilateralism (riduci a boolean --> casi con 1 / casi con più di uno) sui casi, raggruppa per sender
