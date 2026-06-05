@@ -14,12 +14,10 @@ Queries:
 5) How many cases per sender involve a review (review = 1), no review (review = 0), and what is the overall total number of cases for each sender? 
 
 6) How many unique cases are associated with each measure, sorted by frequency in descending order?
-6.1) How many unique cases are associated with each measure for every sender? 
-6.2) How many cases per sender have ≤ 2 measures, 2 < x ≤ 5 measures, 5 < x ≤ 8 measures, or 8 < x ≤ 11 measures, along with the total number of cases for each sender?
+6.1) How many cases per sender have ≤ 2 measures, 2 < x ≤ 5 measures, 5 < x ≤ 8 measures, or 8 < x ≤ 11 measures, along with the total number of cases for each sender?
 
 7) How many unique cases are associated with each goal, sorted by frequency in descending order?
-7.1) How many unique cases are associated with each goal for every sender? 
-7.2) How many cases per sender have ≤ 2 goals, 2 < x ≤ 5 goals, or 5 < x ≤ 8 goals, along with the total number of cases for each sender?
+7.1) How many cases per sender have ≤ 2 goals, 2 < x ≤ 5 goals, or 5 < x ≤ 8 goals, along with the total number of cases for each sender?
 
 8) How many cases per sender involve the adaptation of goals (adapt_goal = 1), no adaptation of goals (adapt_goal = 0), and what is the overall total number of cases for each sender?
 

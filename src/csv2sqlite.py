@@ -38,7 +38,8 @@ df = pd.read_csv(file_path, dtype=str).fillna("")
 # Normalise column names: strip whitespace
 df.columns = df.columns.str.strip()
 
-df["outcome"] = df["outcome"].str.strip()
+# Strip trailing/leading whitespace from all string columns
+df = df.apply(lambda col: col.str.strip() if col.dtype == object else col)
 
 # ---------------------------------------------------------------------------
 # 2. Date normalisation  DD.MM.YYYY → YYYY-MM-DD
@@ -185,6 +186,10 @@ target_lookup, case_target = build_lookup_and_junction(
 
 
 # ── Outcome ──────────────────────────────────────────────────────────────────
+# Normalize "Blank" to "missing" in the outcome column
+df["outcome"] = df["outcome"].str.strip()
+df["outcome"] = df["outcome"].replace("Blank", "missing")
+
 outcome_lookup, case_outcome = build_lookup_and_junction(
     df, "caseid", "outcome", "outcome_type"
 )
@@ -219,20 +224,21 @@ GOAL_DECOD = {
     "CT": "counter-terrorism",
     "DT": "stop drug trafficking",
     "CB": "address convention breach",
+    "other": "other"
     
 }
 
-# goals column is "goals"; adaptgoal is a per-(case,goal) boolean stored in
-# Case_Goal.adapt_goal – we read it from the "adaptgoal" column (row-level,
-# same value applied to all goals in that row as per the CSV structure).
+# Normalize "Other" to "other" in the goals column
 goal_records = []
 for _, row in df.iterrows():
     adapt = int(row["adaptgoal"]) if row["adaptgoal"] in ("0", "1") else None
     for token in split_cell(row["goals"]):
         if token:
+            # Normalize all variations of "Other" to "other"
+            normalized_token = "other" if token.strip().lower() == "other" else token
             goal_records.append({
-                "case_id"   : row["caseid"],
-                "goal_id"   : token,
+                "case_id": row["caseid"],
+                "goal_id": normalized_token,
                 "adapt_goal": adapt,
             })
 
@@ -256,6 +262,13 @@ case_df = df[[
     "sendersalience", "costsender", "instinvestment",
     "targetsalience", "costtarget",
 ]].copy()
+
+# Strip whitespace from requirementter to normalize "Clear " to "Clear"
+case_df["requirementter"] = case_df["requirementter"].str.strip()
+
+# Normalize "Blank" to "missing" in the cost_sender column
+case_df["costsender"] = case_df["costsender"].str.strip()
+case_df["costsender"] = case_df["costsender"].replace("Blank", "missing")
 
 case_df = case_df.rename(columns={
     "caseid"        : "case_id",

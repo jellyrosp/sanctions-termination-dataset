@@ -6,6 +6,9 @@ __pycache__/
 # C extensions
 *.so
 
+# SVG files in data_visual directory
+#data_visual/*.svg
+
 # Distribution / packaging
 .Python
 build/

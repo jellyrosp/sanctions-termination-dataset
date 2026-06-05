@@ -1,9 +1,26 @@
 import sqlite3
 from pathlib import Path
+import sys
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+
+# Project root: 3 levels up from this file
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+src_dir = BASE_DIR / "src"
+
+# Add src to sys.path so `import decode` works
+if str(src_dir) not in sys.path:
+    sys.path.insert(0, str(src_dir))
+
+import decode
+
+# Connect to the database using the same BASE_DIR
+con = sqlite3.connect(BASE_DIR / "data" / "IST-dataset.db")
+
+
 
 
 def query(sql: str, con: sqlite3.Connection) -> pd.DataFrame:
@@ -11,773 +28,1808 @@ def query(sql: str, con: sqlite3.Connection) -> pd.DataFrame:
     return pd.read_sql_query(sql, con)    
 
 
-
-def get_cases_overview(con: sqlite3.Connection) -> pd.DataFrame:
-    """textual description."""
-    sql = """
-        WITH valid_cases AS (
-    SELECT DISTINCT case_id
-    FROM RegimeCase
-    WHERE ter_date IS NOT NULL
-       OR de_facto_ter IS NOT NULL
-       OR ongoing = 1
-),
-sender_totals AS (
-    SELECT
-        s.decod AS sender,
-        COUNT(DISTINCT vc.case_id) AS total_cases,
-        SUM(CASE WHEN rc.ter_date IS NOT NULL THEN 1 ELSE 0 END) AS total_ter_date,
-        SUM(CASE WHEN rc.de_facto_ter IS NOT NULL THEN 1 ELSE 0 END) AS total_de_facto_ter,
-        SUM(CASE WHEN rc.ongoing = 1 THEN 1 ELSE 0 END) AS total_ongoing
-    FROM valid_cases vc
-    JOIN Case_Sender cs ON vc.case_id = cs.case_id
-    JOIN Sender s ON cs.sender_id = s.sender_id
-    JOIN RegimeCase rc ON vc.case_id = rc.case_id
-    GROUP BY s.decod
-)
-SELECT
-    sender,
-    total_cases,
-    total_ter_date,
-    total_de_facto_ter,
-    total_ongoing
-FROM sender_totals
-UNION ALL
-SELECT
-    'TOTAL' AS sender,
-    SUM(total_cases) AS total_cases,
-    SUM(total_ter_date) AS total_ter_date,
-    SUM(total_de_facto_ter) AS total_de_facto_ter,
-    SUM(total_ongoing) AS total_ongoing
-FROM sender_totals
-ORDER BY sender DESC;
+def get_termination_by_sender(con: sqlite3.Connection) -> pd.DataFrame:
     """
-    return query(sql, con)
+    Contingency table of sanction regimes by sender and termination type.
 
+    Multi-sender cases are collapsed at the case level in pandas:
+    - (EEC, EU) is treated as 'EEC & EU'
 
-def get_calculate_duration(con: sqlite3.Connection) -> pd.DataFrame:
-    """textual description."""
-    sql = """
-    SELECT
-    s.decod AS sender,
-    CASE
-        WHEN rc.ongoing = 1 THEN
-            CASE
-                WHEN (julianday('2018-12-31') - julianday(rc.start_date)) / 365.25 < 0.5 THEN '0–6 months'
-                WHEN (julianday('2018-12-31') - julianday(rc.start_date)) / 365.25 < 1 THEN '6 months–1 year'
-                WHEN (julianday('2018-12-31') - julianday(rc.start_date)) / 365.25 < 2 THEN '1–2 years'
-                WHEN (julianday('2018-12-31') - julianday(rc.start_date)) / 365.25 < 5 THEN '2–5 years'
-                WHEN (julianday('2018-12-31') - julianday(rc.start_date)) / 365.25 < 10 THEN '5–10 years'
-                WHEN (julianday('2018-12-31') - julianday(rc.start_date)) / 365.25 < 20 THEN '10–20 years'
-                ELSE '20+ years'
-            END
-        ELSE
-            CASE
-                WHEN (julianday(rc.ter_date) - julianday(rc.start_date)) / 365.25 < 0.5 THEN '0–6 months'
-                WHEN (julianday(rc.ter_date) - julianday(rc.start_date)) / 365.25 < 1 THEN '6 months–1 year'
-                WHEN (julianday(rc.ter_date) - julianday(rc.start_date)) / 365.25 < 2 THEN '1–2 years'
-                WHEN (julianday(rc.ter_date) - julianday(rc.start_date)) / 365.25 < 5 THEN '2–5 years'
-                WHEN (julianday(rc.ter_date) - julianday(rc.start_date)) / 365.25 < 10 THEN '5–10 years'
-                WHEN (julianday(rc.ter_date) - julianday(rc.start_date)) / 365.25 < 20 THEN '10–20 years'
-                ELSE '20+ years'
-            END
-        END AS duration_range,
-    COUNT(DISTINCT rc.case_id) AS case_frequency
-FROM
-    RegimeCase rc
-JOIN
-    Case_Sender cs ON rc.case_id = cs.case_id
-JOIN
-    Sender s ON cs.sender_id = s.sender_id
-WHERE
-    rc.ter_date IS NOT NULL
-    OR rc.ongoing = 1
-GROUP BY
-    s.decod, duration_range
-ORDER BY
-    s.decod, duration_range;
+    Then contingency table is built on cleaned sender categories.
     """
-    return query(sql, con)
 
-
-def get_gradual_termination_distribution(con: sqlite3.Connection) -> pd.DataFrame:
-    """textual description."""
     sql = """
-    WITH valid_cases AS (
-    SELECT DISTINCT case_id
-    FROM RegimeCase
-    WHERE gradual IS NOT NULL
-),
-sender_totals AS (
-    SELECT
-        s.decod AS sender,
-        COUNT(DISTINCT CASE WHEN rc.gradual = 1 THEN vc.case_id END) AS gradual_yes,
-        COUNT(DISTINCT CASE WHEN rc.gradual = 0 THEN vc.case_id END) AS gradual_no,
-        COUNT(DISTINCT vc.case_id) AS total_cases
-    FROM valid_cases vc
-    JOIN Case_Sender cs ON vc.case_id = cs.case_id
-    JOIN Sender s ON cs.sender_id = s.sender_id
-    JOIN RegimeCase rc ON vc.case_id = rc.case_id
-    GROUP BY s.decod
-)
-SELECT
-    sender,
-    gradual_yes,
-    gradual_no,
-    total_cases
-FROM sender_totals
-UNION ALL
-SELECT
-    'TOTAL' AS sender,
-    SUM(gradual_yes) AS gradual_yes,
-    SUM(gradual_no) AS gradual_no,
-    SUM(total_cases) AS total_cases
-FROM sender_totals
-ORDER BY sender DESC;
+        SELECT
+            rc.case_id,
+            s.decod AS sender,
+
+            rc.ter_date,
+            rc.de_facto_ter,
+            rc.ongoing
+
+        FROM RegimeCase rc
+        JOIN Case_Sender cs ON rc.case_id = cs.case_id
+        JOIN Sender s       ON cs.sender_id = s.sender_id
+
+        WHERE rc.ter_date IS NOT NULL
+           OR rc.de_facto_ter IS NOT NULL
+           OR rc.ongoing = 1
     """
-    return query(sql, con)
+
+    df = query(sql, con)
+
+    # --- collapse multi-sender at CASE level ---
+    sender_per_case = (
+        df.groupby("case_id")["sender"]
+          .apply(lambda x: "EEC & EU" if set(x) == {
+              "european economic community - european community",
+              "european union"
+          } else x.iloc[0])
+    )
+
+    df = df.drop_duplicates("case_id").copy()
+    df["sender"] = df["case_id"].map(sender_per_case)
+
+    # --- termination classification ---
+    def classify(row):
+        if pd.notnull(row["ter_date"]) and pd.notnull(row["de_facto_ter"]):
+            return "De iure & de facto"
+        elif pd.notnull(row["ter_date"]):
+            return "De iure"
+        elif pd.notnull(row["de_facto_ter"]):
+            return "De facto"
+        else:
+            return "Ongoing"
+
+    df["termination"] = df.apply(classify, axis=1)
+
+    # --- map sender labels (as in your duration function) ---
+    df["sender"] = df["sender"].map(
+        lambda x: decode.SENDER_ABBREV.get(x, x)
+    )
+
+    # --- contingency table ---
+    ct = (
+        df.groupby(["sender", "termination"])
+          .size()
+          .unstack(fill_value=0)
+    )
+
+    count_cols = [
+        "De iure & de facto",
+        "De iure",
+        "De facto",
+        "Ongoing",
+    ]
+
+    ct = ct.reindex(columns=count_cols, fill_value=0)
+    ct["Total"] = ct.sum(axis=1)
+
+    # --- TOTAL row ---
+    total = ct.sum()
+    ct = pd.concat([ct, total.to_frame().T])
+    ct = ct.rename(index={0: "TOTAL"})
+    ct.index.name = "Sender"
+
+    # --- relative frequencies ---
+    rel = ct[count_cols].div(ct["Total"], axis=0).mul(100).round(1)
+
+    # --- multi-index output ---
+    result = pd.DataFrame(index=ct.index)
+
+    for c in count_cols:
+        result[(c, "Abs.")] = ct[c]
+        result[(c, "Rel(%)")] = rel[c]
+
+    result[("Total", "")] = ct["Total"]
+
+    result.columns = pd.MultiIndex.from_tuples(result.columns)
+
+    return result
+#print(get_termination_by_sender(con))
 
 
-def get_expiry_date_distribution(con: sqlite3.Connection) -> pd.DataFrame:
-    """textual description."""
-    sql = """
-    WITH valid_cases AS (
-    SELECT DISTINCT case_id
-    FROM RegimeCase
-    WHERE expiry IS NOT NULL
-),
-sender_totals AS (
-    SELECT
-        s.decod AS sender,
-        COUNT(DISTINCT CASE WHEN rc.expiry = 1 THEN vc.case_id END) AS expiry_yes,
-        COUNT(DISTINCT CASE WHEN rc.expiry = 0 THEN vc.case_id END) AS expiry_no,
-        COUNT(DISTINCT vc.case_id) AS total_cases
-    FROM valid_cases vc
-    JOIN Case_Sender cs ON vc.case_id = cs.case_id
-    JOIN Sender s ON cs.sender_id = s.sender_id
-    JOIN RegimeCase rc ON vc.case_id = rc.case_id
-    GROUP BY s.decod
-)
-SELECT
-    sender,
-    expiry_yes,
-    expiry_no,
-    total_cases
-FROM sender_totals
-UNION ALL
-SELECT
-    'TOTAL' AS sender,
-    SUM(expiry_yes) AS expiry_yes,
-    SUM(expiry_no) AS expiry_no,
-    SUM(total_cases) AS total_cases
-FROM sender_totals
-ORDER BY sender DESC;
+def get_duration_by_sender(con: sqlite3.Connection) -> pd.DataFrame:
     """
-    return query(sql, con)
+    Contingency table of sanction regimes by sender and duration interval.
 
-def get_review_distribution(con: sqlite3.Connection) -> pd.DataFrame:
-    """textual description."""
-    sql = """
-   WITH valid_cases AS (
-    SELECT DISTINCT case_id
-    FROM RegimeCase
-    WHERE review IS NOT NULL
-),
-sender_totals AS (
-    SELECT
-        s.decod AS sender,
-        COUNT(DISTINCT CASE WHEN rc.review = 1 THEN vc.case_id END) AS review_yes,
-        COUNT(DISTINCT CASE WHEN rc.review = 0 THEN vc.case_id END) AS review_no,
-        COUNT(DISTINCT vc.case_id) AS total_cases
-    FROM valid_cases vc
-    JOIN Case_Sender cs ON vc.case_id = cs.case_id
-    JOIN Sender s ON cs.sender_id = s.sender_id
-    JOIN RegimeCase rc ON vc.case_id = rc.case_id
-    GROUP BY s.decod
-)
-SELECT
-    sender,
-    review_yes,
-    review_no,
-    total_cases
-FROM sender_totals
-UNION ALL
-SELECT
-    'TOTAL' AS sender,
-    SUM(review_yes) AS review_yes,
-    SUM(review_no) AS review_no,
-    SUM(total_cases) AS total_cases
-FROM sender_totals
-ORDER BY sender DESC;
+    Multi-sender cases are collapsed at case level:
+    - (EEC, EU) → "EEC & EU"
+
+    Duration is computed from start_date to ter_date,
+    or to 2018-12-31 for ongoing cases.
     """
-    return query(sql, con)
 
-
-
-def get_measure_distribution_per_sender(con: sqlite3.Connection) -> pd.DataFrame:
-    """textual description."""
     sql = """
     SELECT
-    s.decod AS sender,
-    m.decod AS measure,
-    COUNT(DISTINCT cm.case_id) AS case_count
-FROM
-    Case_Measure cm
-JOIN
-    RegimeCase rc ON cm.case_id = rc.case_id
-JOIN
-    Case_Sender cs ON rc.case_id = cs.case_id
-JOIN
-    Sender s ON cs.sender_id = s.sender_id
-JOIN
-    Measure m ON cm.measure_id = m.measure_id
-GROUP BY
-    s.decod, m.decod
-ORDER BY
-    s.decod, m.decod;
-    """
-    return query(sql, con)
+        rc.case_id,
+        rc.start_date,
 
+        CASE
+            WHEN rc.ongoing = 1 THEN '2018-12-31'
+            ELSE rc.ter_date
+        END AS end_date,
+
+        cs.sender_id,
+        s.decod AS sender
+
+    FROM RegimeCase rc
+    JOIN Case_Sender cs ON rc.case_id = cs.case_id
+    JOIN Sender s       ON cs.sender_id = s.sender_id
+
+    WHERE rc.start_date IS NOT NULL
+      AND (rc.ter_date IS NOT NULL OR rc.ongoing = 1)
+    """
+
+    df = query(sql, con)
+
+    # --- collapse sender at CASE level ---
+    sender_per_case = (
+        df.groupby("case_id")["sender"]
+          .apply(lambda x: "EEC & EU" if set(x) == {
+              "european economic community - european community",
+              "european union"
+          } else x.iloc[0])
+    )
+
+    df = df.drop_duplicates("case_id").copy()
+    df["sender"] = df["case_id"].map(sender_per_case)
+
+    # --- compute duration ---
+    df["start_date"] = pd.to_datetime(df["start_date"], errors="coerce")
+    df["end_date"]   = pd.to_datetime(df["end_date"], errors="coerce")
+
+    df["months"] = (
+        (df["end_date"].dt.year - df["start_date"].dt.year) * 12 +
+        (df["end_date"].dt.month - df["start_date"].dt.month)
+    )
+
+    # --- intervals ---
+    bins = [0, 6, 12, 24, 60, 120, 240, float("inf")]
+    labels = ["0–6m", "6m–1y", "1–2y", "2–5y", "5–10y", "10–20y", "20+y"]
+
+    df["interval"] = pd.cut(df["months"], bins=bins, labels=labels, right=False)
+
+    # --- map sender labels ---
+    df["sender"] = df["sender"].map(
+        lambda x: decode.SENDER_ABBREV.get(x, x)
+    )
+
+    # --- contingency table ---
+    ct = (
+        df.groupby(["sender", "interval"])
+          .size()
+          .unstack(fill_value=0)
+    )
+
+    ct = ct.reindex(columns=labels, fill_value=0)
+
+    ct["Total"] = ct.sum(axis=1)
+
+    total = ct.sum()
+    ct = pd.concat([ct, total.to_frame().T])
+    ct = ct.rename(index={0: "TOTAL"})
+    ct.index.name = "Sender"
+
+    # --- relative frequencies ---
+    rel = ct[labels].div(ct["Total"], axis=0).mul(100).round(1)
+
+    # --- output format ---
+    result = pd.DataFrame(index=ct.index)
+
+    for c in labels:
+        result[(c, "Abs.")] = ct[c]
+        result[(c, "Rel(%)")] = rel[c]
+
+    result[("Total", "")] = ct["Total"]
+
+    result.columns = pd.MultiIndex.from_tuples(result.columns)
+
+    return result
+#print(get_duration_by_sender(con))
+
+
+def get_gradual_by_sender(con: sqlite3.Connection) -> pd.DataFrame:
+    """
+    Contingency table of sanction regimes by sender and termination modality.
+
+    Sender is collapsed at case level:
+    - (EEC, EU) → "EEC & EU"
+
+    Termination modality:
+    - gradual (1)
+    - not gradual (0)
+    - missing (NULL)
+    """
+
+    sql = """
+    SELECT
+        rc.case_id,
+        rc.gradual,
+        s.decod AS sender
+    FROM RegimeCase rc
+    JOIN Case_Sender cs ON rc.case_id = cs.case_id
+    JOIN Sender s       ON cs.sender_id = s.sender_id
+    WHERE rc.gradual IS NOT NULL OR rc.gradual IS NULL
+    """
+
+    df = query(sql, con)
+
+    # --- collapse sender at case level ---
+    sender_per_case = (
+        df.groupby("case_id")["sender"]
+          .apply(
+              lambda x: "EEC & EU"
+              if set(x) == {
+                  "european economic community - european community",
+                  "european union"
+              }
+              else x.iloc[0]
+          )
+    )
+
+    df = df.drop_duplicates("case_id").copy()
+    df["sender"] = df["case_id"].map(sender_per_case)
+
+    # --- map sender labels ---
+    df["sender"] = df["sender"].map(
+        lambda x: decode.SENDER_ABBREV.get(x, x)
+    )
+
+    # --- classify gradual with missing category ---
+    def classify(x):
+        if x == 1:
+            return "Gradual"
+        elif x == 0:
+            return "Not Gradual"
+        else:
+            return "Missing"
+
+    df["modality"] = df["gradual"].apply(classify)
+
+    # --- contingency table ---
+    ct = (
+        df.groupby(["sender", "modality"])
+          .size()
+          .unstack(fill_value=0)
+    )
+
+    # enforce stable column order
+    cols = ["Gradual", "Not Gradual", "Missing"]
+    ct = ct.reindex(columns=cols, fill_value=0)
+
+    ct["Total"] = ct.sum(axis=1)
+
+    # --- TOTAL row ---
+    total = ct.sum()
+    ct = pd.concat([ct, total.to_frame().T])
+    ct = ct.rename(index={0: "TOTAL"})
+    ct.index.name = "Sender"
+
+    # --- relative frequencies ---
+    rel = ct[cols].div(ct["Total"], axis=0).mul(100).round(1)
+
+    # --- MultiIndex output ---
+    result = pd.DataFrame(index=ct.index)
+
+    for c in cols:
+        result[(c, "Abs.")] = ct[c]
+        result[(c, "Rel(%)")] = rel[c]
+
+    result[("Total", "")] = ct["Total"]
+
+    result.columns = pd.MultiIndex.from_tuples(result.columns)
+
+    return result
+#print(get_gradual_by_sender(con))    
+
+
+def get_expiry_by_sender(con: sqlite3.Connection) -> pd.DataFrame:
+    """
+    Contingency table of sanction regimes by sender and expiry condition.
+
+    Sender is collapsed at case level:
+    - (EEC, EU) → "EEC & EU"
+
+    Expiry categories:
+    - stipulated (1)
+    - not stipulated (0)
+    - missing (NULL)
+    """
+
+    sql = """
+    SELECT
+        rc.case_id,
+        rc.expiry,
+        s.decod AS sender
+    FROM RegimeCase rc
+    JOIN Case_Sender cs ON rc.case_id = cs.case_id
+    JOIN Sender s       ON cs.sender_id = s.sender_id
+    WHERE rc.expiry IS NOT NULL OR rc.expiry IS NULL
+    """
+
+    df = query(sql, con)
+
+    # --- collapse sender at case level ---
+    sender_per_case = (
+        df.groupby("case_id")["sender"]
+          .apply(
+              lambda x: "EEC & EU"
+              if set(x) == {
+                  "european economic community - european community",
+                  "european union"
+              }
+              else x.iloc[0]
+          )
+    )
+
+    df = df.drop_duplicates("case_id").copy()
+    df["sender"] = df["case_id"].map(sender_per_case)
+
+    # --- map sender labels ---
+    df["sender"] = df["sender"].map(
+        lambda x: decode.SENDER_ABBREV.get(x, x)
+    )
+
+    # --- classify expiry ---
+    def classify(x):
+        if x == 1:
+            return "Stipulated expiry date"
+        elif x == 0:
+            return "Not stipulated expiry date"
+        else:
+            return "Missing"
+
+    df["expiry_cat"] = df["expiry"].apply(classify)
+
+    # --- contingency table ---
+    ct = (
+        df.groupby(["sender", "expiry_cat"])
+          .size()
+          .unstack(fill_value=0)
+    )
+
+    cols = [
+        "Stipulated expiry date",
+        "Not stipulated expiry date",
+        "Missing"
+    ]
+
+    ct = ct.reindex(columns=cols, fill_value=0)
+
+    ct["Total"] = ct.sum(axis=1)
+
+    # --- TOTAL row ---
+    total = ct.sum()
+    ct = pd.concat([ct, total.to_frame().T])
+    ct = ct.rename(index={0: "TOTAL"})
+    ct.index.name = "Sender"
+
+    # --- relative frequencies ---
+    rel = ct[cols].div(ct["Total"], axis=0).mul(100).round(1)
+
+    # --- MultiIndex output ---
+    result = pd.DataFrame(index=ct.index)
+
+    for c in cols:
+        result[(c, "Abs.")] = ct[c]
+        result[(c, "Rel(%)")] = rel[c]
+
+    result[("Total", "")] = ct["Total"]
+
+    result.columns = pd.MultiIndex.from_tuples(result.columns)
+
+    return result
+#print(get_expiry_by_sender(con))    
+
+
+def get_review_by_sender(con: sqlite3.Connection) -> pd.DataFrame:
+    """
+    Contingency table of sanction regimes by sender and review regulation.
+
+    Sender is collapsed at case level:
+    - (EEC, EU) → "EEC & EU"
+
+    Review categories:
+    - has review regulation (1)
+    - lacks review regulation (0)
+    - missing (NULL)
+    """
+
+    sql = """
+    SELECT
+        rc.case_id,
+        rc.review,
+        s.decod AS sender
+    FROM RegimeCase rc
+    JOIN Case_Sender cs ON rc.case_id = cs.case_id
+    JOIN Sender s       ON cs.sender_id = s.sender_id
+    WHERE rc.review IS NOT NULL OR rc.review IS NULL
+    """
+
+    df = query(sql, con)
+
+    # --- collapse sender at case level ---
+    sender_per_case = (
+        df.groupby("case_id")["sender"]
+          .apply(
+              lambda x: "EEC & EU"
+              if set(x) == {
+                  "european economic community - european community",
+                  "european union"
+              }
+              else x.iloc[0]
+          )
+    )
+
+    df = df.drop_duplicates("case_id").copy()
+    df["sender"] = df["case_id"].map(sender_per_case)
+
+    # --- map sender labels ---
+    df["sender"] = df["sender"].map(
+        lambda x: decode.SENDER_ABBREV.get(x, x)
+    )
+
+    # --- classify review ---
+    def classify(x):
+        if x == 1:
+            return "Has review regulation"
+        elif x == 0:
+            return "Lacks review regulation"
+        else:
+            return "Missing"
+
+    df["review_cat"] = df["review"].apply(classify)
+
+    # --- contingency table ---
+    ct = (
+        df.groupby(["sender", "review_cat"])
+          .size()
+          .unstack(fill_value=0)
+    )
+
+    cols = [
+        "Has review regulation",
+        "Lacks review regulation",
+        "Missing"
+    ]
+
+    ct = ct.reindex(columns=cols, fill_value=0)
+
+    ct["Total"] = ct.sum(axis=1)
+
+    # --- TOTAL row ---
+    total = ct.sum()
+    ct = pd.concat([ct, total.to_frame().T])
+    ct = ct.rename(index={0: "TOTAL"})
+    ct.index.name = "Sender"
+
+    # --- relative frequencies ---
+    rel = ct[cols].div(ct["Total"], axis=0).mul(100).round(1)
+
+    # --- MultiIndex output ---
+    result = pd.DataFrame(index=ct.index)
+
+    for c in cols:
+        result[(c, "Abs.")] = ct[c]
+        result[(c, "Rel(%)")] = rel[c]
+
+    result[("Total", "")] = ct["Total"]
+
+    result.columns = pd.MultiIndex.from_tuples(result.columns)
+
+    return result
+#print(get_review_by_sender(con))    
 
 
 def get_measure_distribution(con: sqlite3.Connection) -> pd.DataFrame:
-    """textual description."""
-    sql = """
-    SELECT
-    m.decod AS measure,
-    COUNT(DISTINCT cm.case_id) AS case_count
-FROM
-    Case_Measure cm
-JOIN
-    Measure m ON cm.measure_id = m.measure_id
-GROUP BY
-    m.decod
-ORDER BY
-    case_count DESC, m.decod;
     """
-    return query(sql, con)
-
-
-def get_measure_distribution_range(con: sqlite3.Connection) -> pd.DataFrame:
-    """textual description."""
-    sql = """
-    WITH measure_counts AS (
-    SELECT
-        cs.sender_id,
-        rc.case_id,
-        COUNT(cm.measure_id) AS measure_count
-    FROM RegimeCase rc
-    JOIN Case_Sender cs ON rc.case_id = cs.case_id
-    JOIN Case_Measure cm ON rc.case_id = cm.case_id
-    GROUP BY cs.sender_id, rc.case_id
-),
-sender_totals AS (
-    SELECT
-        TRIM(s.decod) AS sender,
-        COUNT(CASE WHEN mc.measure_count <= 2 THEN mc.case_id END) AS up_to_2_measures,
-        COUNT(CASE WHEN mc.measure_count > 2 AND mc.measure_count <= 5 THEN mc.case_id END) AS up_to_5_measures,
-        COUNT(CASE WHEN mc.measure_count > 5 AND mc.measure_count <= 8 THEN mc.case_id END) AS up_to_8_measures,
-        COUNT(CASE WHEN mc.measure_count > 8 AND mc.measure_count <= 11 THEN mc.case_id END) AS up_to_11_measures,
-        COUNT(mc.case_id) AS total_cases
-    FROM Sender s
-    LEFT JOIN measure_counts mc ON TRIM(s.sender_id) = TRIM(mc.sender_id)
-    GROUP BY TRIM(s.decod)
-)
-SELECT
-    sender,
-    up_to_2_measures,
-    up_to_5_measures,
-    up_to_8_measures,
-    up_to_11_measures,
-    total_cases
-FROM sender_totals
-
-UNION ALL
-
-SELECT
-    'TOTAL',
-    SUM(up_to_2_measures),
-    SUM(up_to_5_measures),
-    SUM(up_to_8_measures),
-    SUM(up_to_11_measures),
-    (SELECT COUNT(*) FROM Case_Sender)
-FROM sender_totals
-
-ORDER BY sender DESC;
+    Frequency distribution of sanction regimes by applied measure.
+    Relative frequency is computed over the total number of RegimeCase rows.
     """
-    return query(sql, con)
+    sql = """
+        SELECT
+            m.measure_id AS measure,
+            COUNT(DISTINCT cm.case_id) AS n_cases
+        FROM Case_Measure cm
+        JOIN Measure m ON cm.measure_id = m.measure_id
+        GROUP BY m.measure_id
+        ORDER BY n_cases DESC
+    """
+    df = query(sql, con)
+    df.columns = ["Measure", "Case Frq"]
+    df = df.set_index("Measure")
 
+    return df
+#print(get_measure_frequency(con))    
+
+
+def get_measure_by_sender(con: sqlite3.Connection) -> pd.DataFrame:
+    """
+    Contingency table of sanction regimes by sender and measure combinations.
+
+    Both sender and measure are collapsed at case level:
+    - sender: (EEC, EU) → "EEC & EU"
+    - measure: sorted unique set per case
+    - absolute frequency >= 7
+
+    Ensures one observation per regime case.
+    """
+
+    sender_sql = """
+    SELECT cs.case_id, s.decod AS sender
+    FROM Case_Sender cs
+    JOIN Sender s ON cs.sender_id = s.sender_id
+    """
+
+    measure_sql = """
+    SELECT cm.case_id, m.measure_id AS measure
+    FROM Case_Measure cm
+    JOIN Measure m ON cm.measure_id = m.measure_id
+    """
+
+    sender_df = query(sender_sql, con)
+    measure_df = query(measure_sql, con)
+
+    # --- collapse sender at case level ---
+    sender_grouped = (
+        sender_df.groupby("case_id")["sender"]
+        .apply(lambda x: "EEC & EU" if set(x) == {
+            "european economic community - european community",
+            "european union"
+        } else x.iloc[0])
+        .reset_index(name="sender_combo")
+    )
+
+    sender_grouped["sender_combo"] = sender_grouped["sender_combo"].map(
+        lambda x: decode.SENDER_ABBREV.get(x, x)
+    )
+
+    # --- collapse measure at case level (IMPORTANT FIX) ---
+    measure_grouped = (
+        measure_df.groupby("case_id")["measure"]
+        .apply(lambda x: " & ".join(sorted(set(x))))
+        .reset_index(name="measure_combo")
+    )
+
+    # --- merge CASE-level tables (now safe) ---
+    df = sender_grouped.merge(measure_grouped, on="case_id")
+
+    # --- contingency table ---
+    ct = (
+        df.groupby(["sender_combo", "measure_combo"])
+        .size()
+        .unstack(fill_value=0)
+    )
+
+    ct.index.name = "Sender"
+
+    ct["Total"] = ct.sum(axis=1)
+
+    # --- filter rare measure combos ---
+    measure_cols = [c for c in ct.columns if c != "Total"]
+    keep_cols = [c for c in measure_cols if ct[c].sum() >= 7]
+
+    ct = ct[keep_cols + ["Total"]]
+
+    # --- total row ---
+    total = ct.sum()
+    ct = pd.concat([ct, total.to_frame().T])
+    ct = ct.rename(index={0: "TOTAL"})
+
+    # --- relative frequencies ---
+    rel = ct[keep_cols].div(ct["Total"], axis=0).mul(100).round(1)
+
+    # --- MultiIndex output ---
+    result = pd.DataFrame(index=ct.index)
+
+    for c in keep_cols:
+        result[(c, "Abs.")] = ct[c]
+        result[(c, "Rel(%)")] = rel[c]
+
+    result[("Total", "")] = ct["Total"]
+
+    result.columns = pd.MultiIndex.from_tuples(result.columns)
+
+    return result
+#print(get_measure_by_sender(con))    
+
+
+def get_measure_count_by_sender(con: sqlite3.Connection) -> pd.DataFrame:
+    """
+    Frequency distribution of sanction regimes by sender and number of measures.
+
+    Measures are NOT treated as categories but as cardinality per case:
+    - x ≤ 2
+    - 2 < x ≤ 5
+    - 5 < x ≤ 8
+    - 8 < x ≤ 11
+    """
+
+    sender_sql = """
+    SELECT cs.case_id, s.decod AS sender
+    FROM Case_Sender cs
+    JOIN Sender s ON cs.sender_id = s.sender_id
+    """
+
+    measure_sql = """
+    SELECT cm.case_id, cm.measure_id
+    FROM Case_Measure cm
+    """
+
+    sender_df = query(sender_sql, con)
+    measure_df = query(measure_sql, con)
+
+    # --- sender collapse (case-level) ---
+    sender_grouped = (
+        sender_df.groupby("case_id")["sender"]
+        .apply(lambda x: "EEC & EU" if set(x) == {
+            "european economic community - european community",
+            "european union"
+        } else x.iloc[0])
+        .reset_index(name="sender_combo")
+    )
+
+    sender_grouped["sender_combo"] = sender_grouped["sender_combo"].map(
+        lambda x: decode.SENDER_ABBREV.get(x, x)
+    )
+
+    # --- measure count per case ---
+    measure_counts = (
+        measure_df.groupby("case_id")
+        .size()
+        .reset_index(name="n_measures")
+    )
+
+    # --- merge case-level data ---
+    df = sender_grouped.merge(measure_counts, on="case_id", how="left")
+
+    # cases with no measures → 0
+    df["n_measures"] = df["n_measures"].fillna(0).astype(int)
+
+    # --- binning ---
+    bins = [-float("inf"), 2, 5, 8, 11]
+    labels = ["≤2", "3–5", "6–8", "9–11"]
+
+    df["measure_bin"] = pd.cut(
+        df["n_measures"],
+        bins=bins,
+        labels=labels,
+        right=True,
+        include_lowest=True
+    )
+
+    # --- contingency table ---
+    ct = (
+        df.groupby(["sender_combo", "measure_bin"])
+        .size()
+        .unstack(fill_value=0)
+    )
+
+    ct = ct.reindex(columns=labels, fill_value=0)
+
+    ct["Total"] = ct.sum(axis=1)
+
+    # --- total row ---
+    total = ct.sum()
+    ct = pd.concat([ct, total.to_frame().T])
+    ct = ct.rename(index={0: "TOTAL"})
+    ct.index.name = "Sender"
+
+    # --- relative frequencies ---
+    rel = ct[labels].div(ct["Total"], axis=0).mul(100).round(1)
+
+    # --- MultiIndex output ---
+    result = pd.DataFrame(index=ct.index)
+
+    for c in labels:
+        result[(c, "Abs.")] = ct[c]
+        result[(c, "Rel(%)")] = rel[c]
+
+    result[("Total", "")] = ct["Total"]
+
+    result.columns = pd.MultiIndex.from_tuples(result.columns)
+
+    return result
+#print(get_measure_count_by_sender(con))    
 
 
 def get_goal_distribution(con: sqlite3.Connection) -> pd.DataFrame:
-    """textual description."""
-    sql = """
-    SELECT
-    g.decod AS goal,
-    COUNT(DISTINCT cg.case_id) AS case_count
-FROM
-    Case_Goal cg
-JOIN
-    Goal g ON cg.goal_id = g.goal_id
-GROUP BY
-    g.decod
-ORDER BY
-    case_count DESC, g.decod;
     """
-    return query(sql, con)
+    Frequency distribution of sanction regimes by exact number of goals per case.
 
-
-def get_goal_distribution_per_sender(con: sqlite3.Connection) -> pd.DataFrame:
-    """textual description."""
-    sql = """
-    SELECT
-    s.decod AS sender,
-    g.decod AS goal,
-    COUNT(DISTINCT cg.case_id) AS case_count
-FROM
-    Case_Goal cg
-JOIN
-    RegimeCase rc ON cg.case_id = rc.case_id
-JOIN
-    Case_Sender cs ON rc.case_id = cs.case_id
-JOIN
-    Sender s ON cs.sender_id = s.sender_id
-JOIN
-    Goal g ON cg.goal_id = g.goal_id
-GROUP BY
-    s.decod, g.decod
-ORDER BY
-    s.decod, g.decod;
+    Categories:
+    =1, =2, =3, =4, =5, =6
+    Includes correct TOTAL row.
     """
-    return query(sql, con)
+
+    goal_sql = """
+    SELECT case_id, goal_id
+    FROM Case_Goal
+    """
+
+    df = query(goal_sql, con)
+
+    goal_counts = (
+        df.groupby("case_id")
+        .size()
+        .reset_index(name="n_goals")
+    )
+
+    cases_sql = """
+    SELECT case_id FROM RegimeCase
+    """
+
+    cases = query(cases_sql, con)
+
+    df_cases = cases.merge(goal_counts, on="case_id", how="left")
+    df_cases["n_goals"] = df_cases["n_goals"].fillna(0).astype(int)
+
+    grand_total = len(df_cases)
+
+    df_vis = df_cases[df_cases["n_goals"].between(1, 6)]
+
+    ct = (
+        df_vis.groupby("n_goals")
+        .size()
+        .reindex(range(1, 7), fill_value=0)
+    )
+
+    rel = (ct / grand_total * 100).round(1)
+
+    # --- build result with correct alignment ---
+    index = [str(i) for i in range(1, 7)]
+
+    result = pd.DataFrame(index=index)
+
+    result[("Goals", "Abs.")] = ct.reindex(range(1, 7)).values
+    result[("Goals", "Rel(%)")] = rel.reindex(range(1, 7)).values
+
+    total_row = pd.DataFrame(
+        {
+            ("Goals", "Abs."): [ct.sum()],
+            ("Goals", "Rel(%)"): [100.0],
+        },
+        index=["TOTAL"]
+    )
+
+    result = pd.concat([result, total_row])
+
+    result.columns = pd.MultiIndex.from_tuples(result.columns)
+
+    return result
+#print(get_goal_distribution(con))    
 
 
-def get_goal_distribution_range(con: sqlite3.Connection) -> pd.DataFrame:
-    """textual description."""
+def get_goal_count_by_sender(con: sqlite3.Connection) -> pd.DataFrame:
+    """
+    Frequency distribution of sanction regimes by sender and number of goals.
+
+    Goals are NOT treated as categories but as cardinality per case:
+    - x = 1
+    - x = 2
+    - x = 3
+    - x = 4
+    - x = 5
+    - x = 6
+    """
+
+    sender_sql = """
+    SELECT cs.case_id, s.decod AS sender
+    FROM Case_Sender cs
+    JOIN Sender s ON cs.sender_id = s.sender_id
+    """
+
+    goal_sql = """
+    SELECT cg.case_id, cg.goal_id
+    FROM Case_Goal cg
+    """
+
+    sender_df = query(sender_sql, con)
+    goal_df = query(goal_sql, con)
+
+    # --- sender collapse (case-level) ---
+    sender_grouped = (
+        sender_df.groupby("case_id")["sender"]
+        .apply(lambda x: "EEC & EU" if set(x) == {
+            "european economic community - european community",
+            "european union"
+        } else x.iloc[0])
+        .reset_index(name="sender_combo")
+    )
+
+    sender_grouped["sender_combo"] = sender_grouped["sender_combo"].map(
+        lambda x: decode.SENDER_ABBREV.get(x, x)
+    )
+
+    # --- goal count per case ---
+    goal_counts = (
+        goal_df.groupby("case_id")
+        .size()
+        .reset_index(name="n_goals")
+    )
+
+    # --- merge case-level data ---
+    df = sender_grouped.merge(goal_counts, on="case_id", how="left")
+
+    # cases with no goals → 0
+    df["n_goals"] = df["n_goals"].fillna(0).astype(int)
+
+    # --- binning ---
+    # Define bins for exact goal counts (2, 3, 4, 5, 6, 7)
+    bins = [1, 2, 3, 4, 5, 6, 7]  # 7 edges → 6 bins
+    labels = ["1", "2", "3", "4", "5", "6"]  # 6 labels
+
+    df["goal_bin"] = pd.cut(
+        df["n_goals"],
+        bins=bins,
+        labels=labels,
+        right=False,  # Left-inclusive bins (e.g., [2, 3) includes 2)
+    )
+
+    # Filter out cases with n_goals < 1 or n_goals > 7
+    df = df[df["n_goals"].between(1, 6)]
+
+    # --- contingency table ---
+    ct = (
+        df.groupby(["sender_combo", "goal_bin"])
+        .size()
+        .unstack(fill_value=0)
+    )
+
+    ct = ct.reindex(columns=labels, fill_value=0)
+
+    ct["Total"] = ct.sum(axis=1)
+
+    # --- total row ---
+    total = ct.sum()
+    ct = pd.concat([ct, total.to_frame().T])
+    ct = ct.rename(index={0: "TOTAL"})
+    ct.index.name = "Sender"
+
+    # --- relative frequencies ---
+    rel = ct[labels].div(ct["Total"], axis=0).mul(100).round(1)
+
+    # --- MultiIndex output ---
+    result = pd.DataFrame(index=ct.index)
+
+    for c in labels:
+        result[(c, "Abs.")] = ct[c]
+        result[(c, "Rel(%)")] = rel[c]
+
+    result[("Total", "")] = ct["Total"]
+
+    result.columns = pd.MultiIndex.from_tuples(result.columns)
+
+    return result
+#print(get_goal_count_by_sender(con))
+
+
+
+def get_goal_adaptation_by_sender(con: sqlite3.Connection) -> pd.DataFrame:
+    """
+    Frequency distribution of sanction regimes by sender and review adaptation of goal.
+
+    Sender is collapsed at case level:
+    - (EEC, EU) → "EEC & EU"
+
+    Adaptation of goal categories:
+    - Adapted (1)
+    - Not adapted (0)
+    - Missing (NULL)
+    """
+
     sql = """
-    WITH goal_counts AS (
     SELECT
-        cs.sender_id,
         rc.case_id,
-        COUNT(cg.goal_id) AS goal_count
+        cg.adapt_goal,
+        s.decod AS sender
     FROM RegimeCase rc
     JOIN Case_Sender cs ON rc.case_id = cs.case_id
-    JOIN Case_Goal cg ON rc.case_id = cg.case_id
-    GROUP BY cs.sender_id, rc.case_id
-),
-sender_totals AS (
-    SELECT
-        TRIM(s.decod) AS sender,
-        COUNT(CASE WHEN gc.goal_count <= 2 THEN gc.case_id END) AS up_to_2_goals,
-        COUNT(CASE WHEN gc.goal_count > 2 AND gc.goal_count <= 5 THEN gc.case_id END) AS up_to_5_goals,
-        COUNT(CASE WHEN gc.goal_count > 5 AND gc.goal_count <= 8 THEN gc.case_id END) AS up_to_8_goals,
-        COUNT(gc.case_id) AS total_cases
-    FROM Sender s
-    LEFT JOIN goal_counts gc ON TRIM(s.sender_id) = TRIM(gc.sender_id)
-    GROUP BY TRIM(s.decod)
-)
-SELECT
-    sender,
-    up_to_2_goals,
-    up_to_5_goals,
-    up_to_8_goals,
-    total_cases
-FROM sender_totals
-
-UNION ALL
-
-SELECT
-    'TOTAL',
-    SUM(up_to_2_goals),
-    SUM(up_to_5_goals),
-    SUM(up_to_8_goals),
-    (SELECT COUNT(*) FROM Case_Sender)
-FROM sender_totals
-
-ORDER BY sender DESC;
+    JOIN Sender s       ON cs.sender_id = s.sender_id
+    JOIN Case_Goal cg   ON rc.case_id = cg.case_id
     """
-    return query(sql, con)
+
+    df = query(sql, con)
+
+    # --- collapse sender at case level ---
+    sender_per_case = (
+        df.groupby("case_id")["sender"]
+          .apply(
+              lambda x: "EEC & EU"
+              if set(x) == {
+                  "european economic community - european community",
+                  "european union"
+              }
+              else x.iloc[0]
+          )
+    )
+
+    # Drop duplicates to get one row per case
+    df = df.drop_duplicates("case_id").copy()
+    df["sender"] = df["case_id"].map(sender_per_case)
+
+    # --- map sender labels ---
+    df["sender"] = df["sender"].map(
+        lambda x: decode.SENDER_ABBREV.get(x, x)
+    )
+
+    # --- classify adapt_goal ---
+    def classify(x):
+        if x == 1:
+            return "Adapted"
+        elif x == 0:
+            return "Not adapted"
+        else:
+            return "Missing"
+
+    df["adapt_goal_cat"] = df["adapt_goal"].apply(classify)
+
+    # --- contingency table ---
+    ct = (
+        df.groupby(["sender", "adapt_goal_cat"])
+          .size()
+          .unstack(fill_value=0)
+    )
+
+    cols = [
+        "Adapted",
+        "Not adapted",
+        "Missing"
+    ]
+
+    ct = ct.reindex(columns=cols, fill_value=0)
+
+    ct["Total"] = ct.sum(axis=1)
+
+    # --- TOTAL row ---
+    total = ct.sum()
+    ct = pd.concat([ct, total.to_frame().T])
+    ct = ct.rename(index={0: "TOTAL"})
+    ct.index.name = "Sender"
+
+    # --- relative frequencies ---
+    rel = ct[cols].div(ct["Total"], axis=0).mul(100).round(1)
+
+    # --- MultiIndex output ---
+    result = pd.DataFrame(index=ct.index)
+
+    for c in cols:
+        result[(c, "Abs.")] = ct[c]
+        result[(c, "Rel(%)")] = rel[c]
+
+    result[("Total", "")] = ct["Total"]
+
+    result.columns = pd.MultiIndex.from_tuples(result.columns)
+
+    return result
+#print(get_goal_adaptation_by_sender(con))    
 
 
-def get_adapt_goal_distribution_per_sender(con: sqlite3.Connection) -> pd.DataFrame:
-    """textual description."""
-    sql = """
-    WITH valid_cases AS (
-    SELECT DISTINCT case_id
-    FROM Case_Goal
-    WHERE adapt_goal IS NOT NULL
-),
-sender_totals AS (
-    SELECT
-        s.decod AS sender,
-        COUNT(DISTINCT CASE WHEN cg.adapt_goal = 1 THEN vc.case_id END) AS adapt_goal_yes,
-        COUNT(DISTINCT CASE WHEN cg.adapt_goal = 0 THEN vc.case_id END) AS adapt_goal_no,
-        COUNT(DISTINCT vc.case_id) AS total_cases
-    FROM valid_cases vc
-    JOIN Case_Sender cs ON vc.case_id = cs.case_id
-    JOIN Sender s ON cs.sender_id = s.sender_id
-    JOIN Case_Goal cg ON vc.case_id = cg.case_id
-    GROUP BY s.decod
-)
-SELECT
-    sender,
-    adapt_goal_yes,
-    adapt_goal_no,
-    total_cases
-FROM sender_totals
-UNION ALL
-SELECT
-    'TOTAL' AS sender,
-    SUM(adapt_goal_yes) AS adapt_goal_yes,
-    SUM(adapt_goal_no) AS adapt_goal_no,
-    SUM(total_cases) AS total_cases
-FROM sender_totals
-ORDER BY sender DESC;
+def get_target_salience_by_sender(con: sqlite3.Connection) -> pd.DataFrame:
     """
-    return query(sql, con)
+    Frequency distribution of sanction regimes by sender and target salience.
 
-def get_target_salience_distribution_per_sender(con: sqlite3.Connection) -> pd.DataFrame:
-    """textual description."""
-    sql = """
-    WITH valid_cases AS (
-    SELECT DISTINCT case_id
-    FROM RegimeCase
-    WHERE target_salience IS NOT NULL
-),
-sender_totals AS (
-    SELECT
-        s.decod AS sender,
-        COUNT(DISTINCT CASE WHEN rc.target_salience = 1 THEN vc.case_id END) AS target_salience_yes,
-        COUNT(DISTINCT CASE WHEN rc.target_salience = 0 THEN vc.case_id END) AS target_salience_no,
-        COUNT(DISTINCT vc.case_id) AS total_cases
-    FROM valid_cases vc
-    JOIN Case_Sender cs ON vc.case_id = cs.case_id
-    JOIN Sender s ON cs.sender_id = s.sender_id
-    JOIN RegimeCase rc ON vc.case_id = rc.case_id
-    GROUP BY s.decod
-)
-SELECT
-    sender,
-    target_salience_yes,
-    target_salience_no,
-    total_cases
-FROM sender_totals
-UNION ALL
-SELECT
-    'TOTAL' AS sender,
-    SUM(target_salience_yes) AS target_salience_yes,
-    SUM(target_salience_no) AS target_salience_no,
-    SUM(total_cases) AS total_cases
-FROM sender_totals
-ORDER BY sender DESC;
+    Sender is collapsed at case level:
+    - (EEC, EU) → "EEC & EU"
+
+    Target salience categories:
+    - Has target salience (1)
+    - Lacks target salience (0)
     """
-    return query(sql, con)
 
-
-
-def get_sender_salience_distribution_per_sender(con: sqlite3.Connection) -> pd.DataFrame:
-    """textual description."""
     sql = """
-    WITH valid_cases AS (
-    SELECT DISTINCT case_id
-    FROM RegimeCase
-    WHERE sender_salience IS NOT NULL
-),
-sender_totals AS (
     SELECT
-        s.decod AS sender,
-        COUNT(DISTINCT CASE WHEN rc.sender_salience = 1 THEN vc.case_id END) AS sender_salience_yes,
-        COUNT(DISTINCT CASE WHEN rc.sender_salience = 0 THEN vc.case_id END) AS sender_salience_no,
-        COUNT(DISTINCT vc.case_id) AS total_cases
-    FROM valid_cases vc
-    JOIN Case_Sender cs ON vc.case_id = cs.case_id
-    JOIN Sender s ON cs.sender_id = s.sender_id
-    JOIN RegimeCase rc ON vc.case_id = rc.case_id
-    GROUP BY s.decod
-)
-SELECT
-    sender,
-    sender_salience_yes,
-    sender_salience_no,
-    total_cases
-FROM sender_totals
-UNION ALL
-SELECT
-    'TOTAL' AS sender,
-    SUM(sender_salience_yes) AS sender_salience_yes,
-    SUM(sender_salience_no) AS sender_salience_no,
-    SUM(total_cases) AS total_cases
-FROM sender_totals
-ORDER BY sender DESC;
+        rc.case_id,
+        rc.target_salience,
+        s.decod AS sender
+    FROM RegimeCase rc
+    JOIN Case_Sender cs ON rc.case_id = cs.case_id
+    JOIN Sender s       ON cs.sender_id = s.sender_id
     """
-    return query(sql, con)
 
-def get_requirement_termination_distribution_per_sender(con: sqlite3.Connection) -> pd.DataFrame:
-    """textual description."""
-    sql = """
-SELECT 
-    s.decod AS Sender,
-    SUM(CASE WHEN TRIM(rc.requirement_termination) = 'Ambiguous' THEN 1 ELSE 0 END) AS Ambiguous,
-    SUM(CASE WHEN TRIM(rc.requirement_termination) = 'Clear' THEN 1 ELSE 0 END) AS Clear,
-    SUM(CASE WHEN TRIM(rc.requirement_termination) = 'missing' THEN 1 ELSE 0 END) AS Missing,
-    COUNT(*) AS Total
-FROM RegimeCase rc
-JOIN Case_Sender cs ON rc.case_id = cs.case_id
-JOIN Sender s ON cs.sender_id = s.sender_id
-GROUP BY s.sender_id, s.decod
+    df = query(sql, con)
 
-UNION ALL
+    # --- collapse sender at case level ---
+    sender_per_case = (
+        df.groupby("case_id")["sender"]
+          .apply(
+              lambda x: "EEC & EU"
+              if set(x) == {
+                  "european economic community - european community",
+                  "european union"
+              }
+              else x.iloc[0]
+          )
+    )
 
-SELECT 
-    'TOTAL',
-    SUM(CASE WHEN TRIM(rc.requirement_termination) = 'Ambiguous' THEN 1 ELSE 0 END),
-    SUM(CASE WHEN TRIM(rc.requirement_termination) = 'Clear' THEN 1 ELSE 0 END),
-    SUM(CASE WHEN TRIM(rc.requirement_termination) = 'missing' THEN 1 ELSE 0 END),
-    COUNT(*)
-FROM RegimeCase rc
-JOIN Case_Sender cs ON rc.case_id = cs.case_id
-JOIN Sender s ON cs.sender_id = s.sender_id
+    # Drop duplicates to get one row per case
+    df = df.drop_duplicates("case_id").copy()
+    df["sender"] = df["case_id"].map(sender_per_case)
 
-ORDER BY Sender;
- """
-    return query(sql, con)
+    # --- map sender labels ---
+    df["sender"] = df["sender"].map(
+        lambda x: decode.SENDER_ABBREV.get(x, x)
+    )
 
-def get_negotiations_distribution_per_sender(con: sqlite3.Connection) -> pd.DataFrame:
-    """textual description."""
-    sql = """
-    WITH valid_cases AS (
-    SELECT DISTINCT case_id
-    FROM RegimeCase
-    WHERE negotiations IS NOT NULL
-),
-sender_totals AS (
-    SELECT
-        s.decod AS sender,
-        COUNT(DISTINCT CASE WHEN rc.negotiations = 1 THEN vc.case_id END) AS negotiations_yes,
-        COUNT(DISTINCT CASE WHEN rc.negotiations = 0 THEN vc.case_id END) AS negotiations_no,
-        COUNT(DISTINCT vc.case_id) AS total_cases
-    FROM valid_cases vc
-    JOIN Case_Sender cs ON vc.case_id = cs.case_id
-    JOIN Sender s ON cs.sender_id = s.sender_id
-    JOIN RegimeCase rc ON vc.case_id = rc.case_id
-    GROUP BY s.decod
-)
-SELECT
-    sender,
-    negotiations_yes,
-    negotiations_no,
-    total_cases
-FROM sender_totals
-UNION ALL
-SELECT
-    'TOTAL' AS sender,
-    SUM(negotiations_yes) AS negotiations_yes,
-    SUM(negotiations_no) AS negotiations_no,
-    SUM(total_cases) AS total_cases
-FROM sender_totals
-ORDER BY sender DESC;
+    # --- classify target_salience ---
+    def classify(x):
+        if x == 1:
+            return "Has target salience"
+        else:
+            return "Lacks target salience"
+
+    df["target_salience_cat"] = df["target_salience"].apply(classify)
+
+    # --- contingency table ---
+    ct = (
+        df.groupby(["sender", "target_salience_cat"])
+          .size()
+          .unstack(fill_value=0)
+    )
+
+    cols = [
+        "Has target salience",
+        "Lacks target salience"
+    ]
+
+    ct = ct.reindex(columns=cols, fill_value=0)
+
+    ct["Total"] = ct.sum(axis=1)
+
+    # --- TOTAL row ---
+    total = ct.sum()
+    ct = pd.concat([ct, total.to_frame().T])
+    ct = ct.rename(index={0: "TOTAL"})
+    ct.index.name = "Sender"
+
+    # --- relative frequencies ---
+    rel = ct[cols].div(ct["Total"], axis=0).mul(100).round(1)
+
+    # --- MultiIndex output ---
+    result = pd.DataFrame(index=ct.index)
+
+    for c in cols:
+        result[(c, "Abs.")] = ct[c]
+        result[(c, "Rel(%)")] = rel[c]
+
+    result[("Total", "")] = ct["Total"]
+
+    result.columns = pd.MultiIndex.from_tuples(result.columns)
+
+    return result
+#print(get_target_salience_by_sender(con))
+
+
+def get_sender_salience_by_sender(con: sqlite3.Connection) -> pd.DataFrame:
     """
-    return query(sql, con)
+    Frequency distribution of sanction regimes by sender and sender salience.
 
+    Sender is collapsed at case level:
+    - (EEC, EU) → "EEC & EU"
 
-def get_inst_investment_distribution_per_sender(con: sqlite3.Connection) -> pd.DataFrame:
-    """textual description."""
+    Sender salience categories:
+    - Has sender salience (1)
+    - Lacks sender salience (0)
+    """
+
     sql = """
-    WITH valid_cases AS (
-    SELECT DISTINCT case_id
-    FROM RegimeCase
-    WHERE inst_investment IS NOT NULL
-),
-sender_totals AS (
     SELECT
-        s.decod AS sender,
-        COUNT(DISTINCT CASE WHEN rc.inst_investment = 1 THEN vc.case_id END) AS inst_investment_yes,
-        COUNT(DISTINCT CASE WHEN rc.inst_investment = 0 THEN vc.case_id END) AS inst_investment_no,
-        COUNT(DISTINCT vc.case_id) AS total_cases
-    FROM valid_cases vc
-    JOIN Case_Sender cs ON vc.case_id = cs.case_id
-    JOIN Sender s ON cs.sender_id = s.sender_id
-    JOIN RegimeCase rc ON vc.case_id = rc.case_id
-    GROUP BY s.decod
-)
-SELECT
-    sender,
-    inst_investment_yes,
-    inst_investment_no,
-    total_cases
-FROM sender_totals
-UNION ALL
-SELECT
-    'TOTAL' AS sender,
-    SUM(inst_investment_yes) AS inst_investment_yes,
-    SUM(inst_investment_no) AS inst_investment_no,
-    SUM(total_cases) AS total_cases
-FROM sender_totals
-ORDER BY sender DESC;
-"""
-    return query(sql, con)
+        rc.case_id,
+        rc.sender_salience,
+        s.decod AS sender
+    FROM RegimeCase rc
+    JOIN Case_Sender cs ON rc.case_id = cs.case_id
+    JOIN Sender s       ON cs.sender_id = s.sender_id
+    """
 
-def get_outcomes_distribution_per_sender(con: sqlite3.Connection) -> pd.DataFrame:
-    """textual description."""
+    df = query(sql, con)
+
+    # --- collapse sender at case level ---
+    sender_per_case = (
+        df.groupby("case_id")["sender"]
+          .apply(
+              lambda x: "EEC & EU"
+              if set(x) == {
+                  "european economic community - european community",
+                  "european union"
+              }
+              else x.iloc[0]
+          )
+    )
+
+    # Drop duplicates to get one row per case
+    df = df.drop_duplicates("case_id").copy()
+    df["sender"] = df["case_id"].map(sender_per_case)
+
+    # --- map sender labels ---
+    df["sender"] = df["sender"].map(
+        lambda x: decode.SENDER_ABBREV.get(x, x)
+    )
+
+    # --- classify sender_salience ---
+    def classify(x):
+        if x == 1:
+            return "Has sender salience"
+        else:
+            return "Lacks sender salience"
+
+    df["sender_salience_cat"] = df["sender_salience"].apply(classify)
+
+    # --- contingency table ---
+    ct = (
+        df.groupby(["sender", "sender_salience_cat"])
+          .size()
+          .unstack(fill_value=0)
+    )
+
+    cols = [
+        "Has sender salience",
+        "Lacks sender salience"
+    ]
+
+    ct = ct.reindex(columns=cols, fill_value=0)
+
+    ct["Total"] = ct.sum(axis=1)
+
+    # --- TOTAL row ---
+    total = ct.sum()
+    ct = pd.concat([ct, total.to_frame().T])
+    ct = ct.rename(index={0: "TOTAL"})
+    ct.index.name = "Sender"
+
+    # --- relative frequencies ---
+    rel = ct[cols].div(ct["Total"], axis=0).mul(100).round(1)
+
+    # --- MultiIndex output ---
+    result = pd.DataFrame(index=ct.index)
+
+    for c in cols:
+        result[(c, "Abs.")] = ct[c]
+        result[(c, "Rel(%)")] = rel[c]
+
+    result[("Total", "")] = ct["Total"]
+
+    result.columns = pd.MultiIndex.from_tuples(result.columns)
+
+    return result
+#print(get_sender_salience_by_sender(con))    
+
+
+def get_requirement_termination_by_sender(con: sqlite3.Connection) -> pd.DataFrame:
+    """
+    Frequency distribution of sanction regimes by sender and requirement termination.
+
+    Sender is collapsed at case level:
+    - (EEC, EU) → "EEC & EU"
+
+    Requirement termination categories:
+    - Ambiguous
+    - Clear
+    - missing
+    """
+
     sql = """
-WITH sender_totals AS (
     SELECT
-        TRIM(s.decod) AS sender,
-        COUNT(CASE WHEN TRIM(co.outcome_type) = 'Blank' THEN co.case_id END) AS Blank,
-        COUNT(CASE WHEN TRIM(co.outcome_type) = 'Negotiated settlement' THEN co.case_id END) AS Negotiated_settlement,
-        COUNT(CASE WHEN TRIM(co.outcome_type) = 'Sender capitulation' THEN co.case_id END) AS Sender_capitulation,
-        COUNT(CASE WHEN TRIM(co.outcome_type) = 'Stalemate' THEN co.case_id END) AS Stalemate,
-        COUNT(CASE WHEN TRIM(co.outcome_type) = 'Target complete acquiescence' THEN co.case_id END) AS Target_complete_acquiescence,
-        COUNT(CASE WHEN TRIM(co.outcome_type) = 'Target partial acquiescence' THEN co.case_id END) AS Target_partial_acquiescence,
-        COUNT(co.case_id) AS total_cases
-    FROM Sender s
-    LEFT JOIN Case_Sender cs ON TRIM(s.sender_id) = TRIM(cs.sender_id)
-    LEFT JOIN Case_Outcome co ON cs.case_id = co.case_id
-    GROUP BY TRIM(s.decod)
-)
-SELECT
-    sender,
-    Blank,
-    Negotiated_settlement,
-    Sender_capitulation,
-    Stalemate,
-    Target_complete_acquiescence,
-    Target_partial_acquiescence,
-    total_cases
-FROM sender_totals
+        rc.case_id,
+        rc.requirement_termination,
+        s.decod AS sender
+    FROM RegimeCase rc
+    JOIN Case_Sender cs ON rc.case_id = cs.case_id
+    JOIN Sender s       ON cs.sender_id = s.sender_id
+    """
 
-UNION ALL
+    df = query(sql, con)
 
-SELECT
-    'TOTAL',
-    SUM(Blank),
-    SUM(Negotiated_settlement),
-    SUM(Sender_capitulation),
-    SUM(Stalemate),
-    SUM(Target_complete_acquiescence),
-    SUM(Target_partial_acquiescence),
-    (SELECT COUNT(*) FROM Case_Sender)
-FROM sender_totals
+    # --- collapse sender at case level ---
+    sender_per_case = (
+        df.groupby("case_id")["sender"]
+          .apply(
+              lambda x: "EEC & EU"
+              if set(x) == {
+                  "european economic community - european community",
+                  "european union"
+              }
+              else x.iloc[0]
+          )
+    )
 
-ORDER BY sender DESC;
-"""
-    return query(sql, con)
+    # Drop duplicates to get one row per case
+    df = df.drop_duplicates("case_id").copy()
+    df["sender"] = df["case_id"].map(sender_per_case)
+
+    # --- map sender labels ---
+    df["sender"] = df["sender"].map(
+        lambda x: decode.SENDER_ABBREV.get(x, x)
+    )
+
+    # Use requirement_termination directly (no classification needed)
+    df["requirement_termination_cat"] = df["requirement_termination"]
+
+    # --- contingency table ---
+    ct = (
+        df.groupby(["sender", "requirement_termination_cat"])
+          .size()
+          .unstack(fill_value=0)
+    )
+
+    cols = [
+        "Ambiguous",
+        "Clear",
+        "missing"
+    ]
+
+    ct = ct.reindex(columns=cols, fill_value=0)
+
+    ct["Total"] = ct.sum(axis=1)
+
+    # --- TOTAL row ---
+    total = ct.sum()
+    ct = pd.concat([ct, total.to_frame().T])
+    ct = ct.rename(index={0: "TOTAL"})
+    ct.index.name = "Sender"
+
+    # --- relative frequencies ---
+    rel = ct[cols].div(ct["Total"], axis=0).mul(100).round(1)
+
+    # --- MultiIndex output ---
+    result = pd.DataFrame(index=ct.index)
+
+    for c in cols:
+        result[(c, "Abs.")] = ct[c]
+        result[(c, "Rel(%)")] = rel[c]
+
+    result[("Total", "")] = ct["Total"]
+
+    result.columns = pd.MultiIndex.from_tuples(result.columns)
+
+    return result
+#print(get_requirement_termination_by_sender(con))
 
 
-def get_cost_sender_distribution_per_sender(con: sqlite3.Connection) -> pd.DataFrame:
-    """textual description."""
+
+def get_negotiation_by_sender(con: sqlite3.Connection) -> pd.DataFrame:
+    """
+    Frequency distribution of sanction regimes by sender and negotiation.
+
+    Sender is collapsed at case level:
+    - (EEC, EU) → "EEC & EU"
+
+    Negotiation categories:
+    - Has negotiation (1)
+    - Lacks negotiation (0)
+    """
     sql = """
-WITH sender_totals AS (
     SELECT
-        TRIM(s.decod) AS sender,
-        COUNT(CASE WHEN TRIM(rc.cost_sender) = 'Blank' THEN rc.case_id END) AS Blank,
-        COUNT(CASE WHEN TRIM(rc.cost_sender) = 'Minor' THEN rc.case_id END) AS Minor,
-        COUNT(CASE WHEN TRIM(rc.cost_sender) = 'Major' THEN rc.case_id END) AS Major,
-        COUNT(rc.case_id) AS total_cases
-    FROM Sender s
-    LEFT JOIN Case_Sender cs ON TRIM(s.sender_id) = TRIM(cs.sender_id)
-    LEFT JOIN RegimeCase rc ON cs.case_id = rc.case_id
-    GROUP BY TRIM(s.decod)
-)
-SELECT
-    sender,
-    Blank,
-    Minor,
-    Major,
-    total_cases
-FROM sender_totals
+        rc.case_id,
+        rc.negotiations,
+        s.decod AS sender
+    FROM RegimeCase rc
+    JOIN Case_Sender cs ON rc.case_id = cs.case_id
+    JOIN Sender s       ON cs.sender_id = s.sender_id
+    """
+    
+    df = query(sql, con)
 
-UNION ALL
+    # --- collapse sender at case level ---
+    sender_per_case = (
+        df.groupby("case_id")["sender"]
+          .apply(
+              lambda x: "EEC & EU"
+              if set(x) == {
+                  "european economic community - european community",
+                  "european union"
+              }
+              else x.iloc[0]
+          )
+    )
 
-SELECT
-    'TOTAL',
-    SUM(Blank),
-    SUM(Minor),
-    SUM(Major),
-    (SELECT COUNT(*) FROM Case_Sender)
-FROM sender_totals
+    # Drop duplicates to get one row per case
+    df = df.drop_duplicates("case_id").copy()
+    df["sender"] = df["case_id"].map(sender_per_case)
 
-ORDER BY sender DESC;
-"""
-    return query(sql, con)
+    # --- map sender labels ---
+    df["sender"] = df["sender"].map(
+        lambda x: decode.SENDER_ABBREV.get(x, x)
+    )
+
+    # --- classify negotiations ---
+    def classify(x):
+        if x == 1:
+            return "Has negotiation"
+        else:
+            return "Lacks negotiation"
+
+    df["negotiation_cat"] = df["negotiations"].apply(classify)
+
+    # --- contingency table ---
+    ct = (
+        df.groupby(["sender", "negotiation_cat"])
+          .size()
+          .unstack(fill_value=0)
+    )
+
+    cols = [
+        "Has negotiation",
+        "Lacks negotiation"
+    ]
+
+    ct = ct.reindex(columns=cols, fill_value=0)
+    ct["Total"] = ct.sum(axis=1)
+
+    # --- TOTAL row ---
+    total = ct.sum()
+    ct = pd.concat([ct, total.to_frame().T])
+    ct = ct.rename(index={0: "TOTAL"})
+    ct.index.name = "Sender"
+
+    # --- relative frequencies ---
+    rel = ct[cols].div(ct["Total"], axis=0).mul(100).round(1)
+
+    # --- MultiIndex output ---
+    result = pd.DataFrame(index=ct.index)
+
+    for c in cols:
+        result[(c, "Abs.")] = ct[c]
+        result[(c, "Rel(%)")] = rel[c]
+
+    result[("Total", "")] = ct["Total"]
+
+    result.columns = pd.MultiIndex.from_tuples(result.columns)
+
+    return result
+#print(get_negotiation_by_sender(con))    
 
 
-def get_cost_target_distribution_per_sender(con: sqlite3.Connection) -> pd.DataFrame:
-    """textual description."""
+def get_outcome_type_by_sender(con: sqlite3.Connection) -> pd.DataFrame:
+    """
+    Contingency table of sanction regimes by sender and outcome type.
+
+    Multi-sender cases are collapsed at the case level in pandas:
+    - (EEC, EU) is treated as 'EEC & EU'
+
+    Then contingency table is built on cleaned sender categories.
+    """
+
     sql = """
-WITH sender_totals AS (
-    SELECT
-        TRIM(s.decod) AS sender,
-        COUNT(CASE WHEN TRIM(rc.cost_target) = 'Minor' THEN rc.case_id END) AS Minor,
-        COUNT(CASE WHEN TRIM(rc.cost_target) = 'Major' THEN rc.case_id END) AS Major,
-        COUNT(CASE WHEN TRIM(rc.cost_target) = 'Severe' THEN rc.case_id END) AS Severe,
-        COUNT(rc.case_id) AS total_cases
-    FROM Sender s
-    LEFT JOIN Case_Sender cs ON TRIM(s.sender_id) = TRIM(cs.sender_id)
-    LEFT JOIN RegimeCase rc ON cs.case_id = rc.case_id
-    GROUP BY TRIM(s.decod)
-)
-SELECT
-    sender,
-    Minor,
-    Major,
-    Severe,
-    total_cases
-FROM sender_totals
+        SELECT
+            rc.case_id,
+            s.decod AS sender,
+            co.outcome_type
 
-UNION ALL
+        FROM RegimeCase rc
+        JOIN Case_Sender cs ON rc.case_id = cs.case_id
+        JOIN Sender s       ON cs.sender_id = s.sender_id
+        JOIN Case_Outcome co ON rc.case_id = co.case_id
+    """
 
-SELECT
-    'TOTAL',
-    SUM(Minor),
-    SUM(Major),
-    SUM(Severe),
-    (SELECT COUNT(*) FROM Case_Sender)
-FROM sender_totals
+    df = query(sql, con)
 
-ORDER BY sender DESC;
-"""
-    return query(sql, con)
+    # --- collapse multi-sender at CASE level ---
+    sender_per_case = (
+        df.groupby("case_id")["sender"]
+          .apply(lambda x: "EEC & EU" if set(x) == {
+              "european economic community - european community",
+              "european union"
+          } else x.iloc[0])
+    )
+
+    df = df.drop_duplicates("case_id").copy()
+    df["sender"] = df["case_id"].map(sender_per_case)
+
+    # --- map sender labels (as in your duration function) ---
+    df["sender"] = df["sender"].map(
+        lambda x: decode.SENDER_ABBREV.get(x, x)
+    )
+
+    # --- contingency table ---
+    ct = (
+        df.groupby(["sender", "outcome_type"])
+          .size()
+          .unstack(fill_value=0)
+    )
+
+    # Reindex to ensure consistent column order (optional, adjust as needed)
+    # You can list all outcome types from your Outcome table here
+    count_cols = sorted(ct.columns.tolist())
+
+    ct = ct.reindex(columns=count_cols, fill_value=0)
+    ct["Total"] = ct.sum(axis=1)
+
+    # --- TOTAL row ---
+    total = ct.sum()
+    ct = pd.concat([ct, total.to_frame().T])
+    ct = ct.rename(index={0: "TOTAL"})
+    ct.index.name = "Sender"
+
+    # --- relative frequencies ---
+    rel = ct[count_cols].div(ct["Total"], axis=0).mul(100).round(1)
+
+    # --- multi-index output ---
+    result = pd.DataFrame(index=ct.index)
+
+    for c in count_cols:
+        result[(c, "Abs.")] = ct[c]
+        result[(c, "Rel(%)")] = rel[c]
+
+    result[("Total", "")] = ct["Total"]
+
+    result.columns = pd.MultiIndex.from_tuples(result.columns)
+
+    return result
+#print(get_outcome_type_by_sender(con))    
 
 
-def get_multilateralism_distribution_per_sender(con: sqlite3.Connection) -> pd.DataFrame:
-    """textual description."""
+def get_sender_cost_by_sender(con: sqlite3.Connection) -> pd.DataFrame:
+    """
+    Frequency distribution of sanction regimes by sender and sender cost.
+
+    Multi-sender cases are collapsed at the case level in pandas:
+    - (EEC, EU) is treated as 'EEC & EU'
+
+    Then contingency table is built on cleaned sender categories.
+    """
+
     sql = """
-WITH multi_counts AS (
+        SELECT
+            rc.case_id,
+            s.decod AS sender,
+            rc.cost_sender
+
+        FROM RegimeCase rc
+        JOIN Case_Sender cs ON rc.case_id = cs.case_id
+        JOIN Sender s       ON cs.sender_id = s.sender_id
+    """
+
+    df = query(sql, con)
+
+    # --- collapse multi-sender at CASE level ---
+    sender_per_case = (
+        df.groupby("case_id")["sender"]
+          .apply(lambda x: "EEC & EU" if set(x) == {
+              "european economic community - european community",
+              "european union"
+          } else x.iloc[0])
+    )
+
+    df = df.drop_duplicates("case_id").copy()
+    df["sender"] = df["case_id"].map(sender_per_case)
+
+    # --- map sender labels (as in your duration function) ---
+    df["sender"] = df["sender"].map(
+        lambda x: decode.SENDER_ABBREV.get(x, x)
+    )
+
+    # --- contingency table ---
+    ct = (
+        df.groupby(["sender", "cost_sender"])
+          .size()
+          .unstack(fill_value=0)
+    )
+
+    # Reindex to ensure consistent column order (sorted by default)
+    count_cols = sorted(ct.columns.tolist())
+
+    ct = ct.reindex(columns=count_cols, fill_value=0)
+    ct["Total"] = ct.sum(axis=1)
+
+    # --- TOTAL row ---
+    total = ct.sum()
+    ct = pd.concat([ct, total.to_frame().T])
+    ct = ct.rename(index={0: "TOTAL"})
+    ct.index.name = "Sender"
+
+    # --- relative frequencies ---
+    rel = ct[count_cols].div(ct["Total"], axis=0).mul(100).round(1)
+
+    # --- multi-index output ---
+    result = pd.DataFrame(index=ct.index)
+
+    for c in count_cols:
+        result[(c, "Abs.")] = ct[c]
+        result[(c, "Rel(%)")] = rel[c]
+
+    result[("Total", "")] = ct["Total"]
+
+    result.columns = pd.MultiIndex.from_tuples(result.columns)
+
+    return result
+#print(get_sender_cost_by_sender(con)) 
+
+
+def get_inst_investment_by_sender(con: sqlite3.Connection) -> pd.DataFrame:
+    """
+    Frequency distribution of sanction regimes by sender and institutional investment.
+
+    Sender is collapsed at case level:
+    - (EEC, EU) → "EEC & EU"
+
+    Institutional investment categories:
+    - Has inst. invest. (1)
+    - Lacks inst. invest. (0)
+    """
+
+    sql = """
     SELECT
-        TRIM(cs.sender_id) AS sender_id,
-        TRIM(cm.case_id) AS case_id,
-        COUNT(TRIM(cm.multilateralism_id)) AS multi_count
-    FROM Case_Multilateralism cm
-    JOIN Case_Sender cs ON TRIM(cm.case_id) = TRIM(cs.case_id)
-    GROUP BY TRIM(cs.sender_id), TRIM(cm.case_id)
-),
-sender_totals AS (
+        rc.case_id,
+        rc.inst_investment,
+        s.decod AS sender
+    FROM RegimeCase rc
+    JOIN Case_Sender cs ON rc.case_id = cs.case_id
+    JOIN Sender s       ON cs.sender_id = s.sender_id
+    """
+
+    df = query(sql, con)
+
+    # --- collapse sender at case level ---
+    sender_per_case = (
+        df.groupby("case_id")["sender"]
+          .apply(
+              lambda x: "EEC & EU"
+              if set(x) == {
+                  "european economic community - european community",
+                  "european union"
+              }
+              else x.iloc[0]
+          )
+    )
+
+    # Drop duplicates to get one row per case
+    df = df.drop_duplicates("case_id").copy()
+    df["sender"] = df["case_id"].map(sender_per_case)
+
+    # --- map sender labels ---
+    df["sender"] = df["sender"].map(
+        lambda x: decode.SENDER_ABBREV.get(x, x)
+    )
+
+    # --- classify inst_investment ---
+    def classify(x):
+        if x == 1:
+            return "Has inst. invest."
+        else:
+            return "Lacks inst. invest."
+
+    df["inst_investment_cat"] = df["inst_investment"].apply(classify)
+
+    # --- contingency table ---
+    ct = (
+        df.groupby(["sender", "inst_investment_cat"])
+          .size()
+          .unstack(fill_value=0)
+    )
+
+    cols = [
+        "Has inst. invest.",
+        "Lacks inst. invest."
+    ]
+
+    ct = ct.reindex(columns=cols, fill_value=0)
+
+    ct["Total"] = ct.sum(axis=1)
+
+    # --- TOTAL row ---
+    total = ct.sum()
+    ct = pd.concat([ct, total.to_frame().T])
+    ct = ct.rename(index={0: "TOTAL"})
+    ct.index.name = "Sender"
+
+    # --- relative frequencies ---
+    rel = ct[cols].div(ct["Total"], axis=0).mul(100).round(1)
+
+    # --- MultiIndex output ---
+    result = pd.DataFrame(index=ct.index)
+
+    for c in cols:
+        result[(c, "Abs.")] = ct[c]
+        result[(c, "Rel(%)")] = rel[c]
+
+    result[("Total", "")] = ct["Total"]
+
+    result.columns = pd.MultiIndex.from_tuples(result.columns)
+
+    return result
+#print(get_inst_investment_by_sender(con))    
+
+
+def get_target_cost_by_sender(con: sqlite3.Connection) -> pd.DataFrame:
+    """
+    Frequency distribution of sanction regimes by sender and target cost.
+
+    Sender is collapsed at case level:
+    - (EEC, EU) → "EEC & EU"
+
+    Target cost categories:
+    - All unique text values from RegimeCase.cost_target
+    """
+
+    sql = """
     SELECT
-        TRIM(s.decod) AS sender,
-        COUNT(CASE WHEN mc.multi_count = 1 THEN mc.case_id END) AS unilateral,
-        COUNT(CASE WHEN mc.multi_count > 1 THEN mc.case_id END) AS multilateral,
-        COUNT(mc.case_id) AS total_cases
-    FROM Sender s
-    LEFT JOIN multi_counts mc ON TRIM(s.sender_id) = mc.sender_id
-    GROUP BY TRIM(s.decod)
-)
-SELECT
-    sender,
-    unilateral,
-    multilateral,
-    total_cases
-FROM sender_totals
+        rc.case_id,
+        rc.cost_target,
+        s.decod AS sender
+    FROM RegimeCase rc
+    JOIN Case_Sender cs ON rc.case_id = cs.case_id
+    JOIN Sender s       ON cs.sender_id = s.sender_id
+    """
 
-UNION ALL
+    df = query(sql, con)
 
-SELECT
-    'TOTAL',
-    SUM(unilateral),
-    SUM(multilateral),
-    (SELECT COUNT(*) FROM Case_Sender)
-FROM sender_totals
+    # --- collapse sender at case level ---
+    sender_per_case = (
+        df.groupby("case_id")["sender"]
+          .apply(
+              lambda x: "EEC & EU"
+              if set(x) == {
+                  "european economic community - european community",
+                  "european union"
+              }
+              else x.iloc[0]
+          )
+    )
 
-ORDER BY sender DESC;
-"""
-    return query(sql, con)
+    # Drop duplicates to get one row per case
+    df = df.drop_duplicates("case_id").copy()
+    df["sender"] = df["case_id"].map(sender_per_case)
+
+    # --- map sender labels ---
+    df["sender"] = df["sender"].map(
+        lambda x: decode.SENDER_ABBREV.get(x, x)
+    )
+
+    # Use cost_target directly (assuming it's already clean)
+    df["target_cost_cat"] = df["cost_target"]
+
+    # --- contingency table ---
+    # Get all unique target cost values for columns
+    unique_costs = sorted(df["target_cost_cat"].unique())
+    ct = (
+        df.groupby(["sender", "target_cost_cat"])
+          .size()
+          .unstack(fill_value=0)
+    )
+
+    # Reindex to include all unique cost values
+    ct = ct.reindex(columns=unique_costs, fill_value=0)
+
+    ct["Total"] = ct.sum(axis=1)
+
+    # --- TOTAL row ---
+    total = ct.sum()
+    ct = pd.concat([ct, total.to_frame().T])
+    ct = ct.rename(index={0: "TOTAL"})
+    ct.index.name = "Sender"
+
+    # --- relative frequencies ---
+    rel = ct[unique_costs].div(ct["Total"], axis=0).mul(100).round(1)
+
+    # --- MultiIndex output ---
+    result = pd.DataFrame(index=ct.index)
+
+    for c in unique_costs:
+        result[(c, "Abs.")] = ct[c]
+        result[(c, "Rel(%)")] = rel[c]
+
+    result[("Total", "")] = ct["Total"]
+
+    result.columns = pd.MultiIndex.from_tuples(result.columns)
+
+    return result
+#print(get_target_cost_by_sender(con))    
+
+
+def get_multilat_by_sender(con: sqlite3.Connection) -> pd.DataFrame:
+    """
+    Frequency distribution of sanction regimes by sender and multilateralism.
+
+    Sender is collapsed at case level:
+    - (EEC, EU) → "EEC & EU"
+
+    Multilateralism categories:
+    - Single Multilateralism (1 value)
+    - Multiple Multilateralisms (>1 value)
+    """
+
+    sql = """
+    SELECT
+        rc.case_id,
+        s.decod AS sender
+    FROM RegimeCase rc
+    JOIN Case_Sender cs ON rc.case_id = cs.case_id
+    JOIN Sender s       ON cs.sender_id = s.sender_id
+    """
+
+    df = query(sql, con)
+
+    # --- collapse sender at case level ---
+    sender_per_case = (
+        df.groupby("case_id")["sender"]
+          .apply(
+              lambda x: "EEC & EU"
+              if set(x) == {
+                  "european economic community - european community",
+                  "european union"
+              }
+              else x.iloc[0]
+          )
+    )
+
+    # Drop duplicates to get one row per case
+    df = df.drop_duplicates("case_id").copy()
+    df["sender"] = df["case_id"].map(sender_per_case)
+
+    # --- map sender labels ---
+    df["sender"] = df["sender"].map(
+        lambda x: decode.SENDER_ABBREV.get(x, x)
+    )
+
+    # --- count multilateralism values per case ---
+    multilateralism_counts = (
+        con.execute("""
+            SELECT
+                case_id,
+                COUNT(multilateralism_id) AS multilateralism_count
+            FROM
+                Case_Multilateralism
+            GROUP BY
+                case_id
+        """)
+        .fetchall()
+    )
+
+    multilateralism_counts_df = pd.DataFrame(
+        multilateralism_counts,
+        columns=["case_id", "multilateralism_count"]
+    )
+
+    # Merge multilateralism counts into the main DataFrame
+    df = df.merge(multilateralism_counts_df, on="case_id", how="left")
+    df["multilateralism_count"] = df["multilateralism_count"].fillna(0).astype(int)
+
+    # --- classify multilateralism ---
+    def classify(x):
+        if x == 1:
+            return "Single Multilateralism"
+        elif x > 1:
+            return "Multiple Multilateralisms"
+
+    df["multilateralism_cat"] = df["multilateralism_count"].apply(classify)
+
+    # --- contingency table ---
+    ct = (
+        df.groupby(["sender", "multilateralism_cat"])
+          .size()
+          .unstack(fill_value=0)
+    )
+
+    cols = [
+        "Single Multilateralism",
+        "Multiple Multilateralisms"
+    ]
+
+    ct = ct.reindex(columns=cols, fill_value=0)
+
+    ct["Total"] = ct.sum(axis=1)
+
+    # --- TOTAL row ---
+    total = ct.sum()
+    ct = pd.concat([ct, total.to_frame().T])
+    ct = ct.rename(index={0: "TOTAL"})
+    ct.index.name = "Sender"
+
+    # --- relative frequencies ---
+    rel = ct[cols].div(ct["Total"], axis=0).mul(100).round(1)
+
+    # --- MultiIndex output ---
+    result = pd.DataFrame(index=ct.index)
+
+    for c in cols:
+        result[(c, "Abs.")] = ct[c]
+        result[(c, "Rel(%)")] = rel[c]
+
+    result[("Total", "")] = ct["Total"]
+
+    result.columns = pd.MultiIndex.from_tuples(result.columns)
+
+    return result
+#print(get_multilat_by_sender(con))    
