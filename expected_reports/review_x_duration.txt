@@ -1,0 +1,10 @@
+=================================================================
+EXPECTED FREQUENCY CHECK
+=================================================================
+Table shape          : 2 rows × 7 cols (14 cells, df=6)
+Grand total (N)      : 390
+Threshold source     : adaptive (medium table 10–24 cells)
+Cells below E=5.0   : 0 / 14 (0.0%) [limit: 15%]
+Minimum expected     : 8.97 [hard minimum: 1.0]
+Result               : PASS
+=================================================================

@@ -1,0 +1,30 @@
+=================================================================
+EXPECTED FREQUENCY CHECK
+=================================================================
+Table shape          : 2 rows × 13 cols (26 cells, df=12)
+Grand total (N)      : 392
+Threshold source     : adaptive (large table ≥ 25 cells)
+Cells below E=5.0   : 16 / 26 (61.5%) [limit: 10%]
+Minimum expected     : 0.18 [hard minimum: 1.0]
+Result               : FAIL
+
+Cells with expected < 5.0:
+Row                                 Col                                   Expected
+----------------------------------------------------------------------------------
+Not stipulated                      EAC                                       0.82
+Not stipulated                      EEC                                       4.11
+Not stipulated                      LAS                                       2.46
+Not stipulated                      OAS                                       2.46
+Not stipulated                      SADC                                      0.82
+Not stipulated                      UM                                        0.82
+Stipulated                          CommSec                                   1.25
+Stipulated                          EAC                                       0.18
+Stipulated                          ECOWAS                                    1.61
+Stipulated                          EEC                                       0.89
+Stipulated                          EEC & EU                                  2.86
+Stipulated                          LAS                                       0.54
+Stipulated                          OAS                                       0.54
+Stipulated                          OAU                                       2.50
+Stipulated                          SADC                                      0.18
+Stipulated                          UM                                        0.18
+=================================================================

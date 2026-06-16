@@ -1,0 +1,52 @@
+=================================================================
+EXPECTED FREQUENCY CHECK
+=================================================================
+Table shape          : 7 rows × 8 cols (56 cells, df=42)
+Grand total (N)      : 291
+Threshold source     : adaptive (large table ≥ 25 cells)
+Cells below E=5.0   : 38 / 56 (67.9%) [limit: 10%]
+Minimum expected     : 0.08 [hard minimum: 1.0]
+Result               : FAIL
+
+Cells with expected < 5.0:
+Row                                 Col                                   Expected
+----------------------------------------------------------------------------------
+0–6m                                Negotiated settlement                     0.47
+0–6m                                Negotiated settlement & Sender capitulation       0.23
+0–6m                                Negotiated settlement & Target complete acquiescence       0.35
+0–6m                                Negotiated settlement & Target partial acquiescence       1.17
+0–6m                                Stalemate                                 3.15
+6m–1y                               Negotiated settlement                     0.51
+6m–1y                               Negotiated settlement & Sender capitulation       0.25
+6m–1y                               Negotiated settlement & Target complete acquiescence       0.38
+6m–1y                               Negotiated settlement & Target partial acquiescence       1.27
+6m–1y                               Stalemate                                 3.43
+1–2y                                Negotiated settlement                     0.55
+1–2y                                Negotiated settlement & Sender capitulation       0.27
+1–2y                                Negotiated settlement & Target complete acquiescence       0.41
+1–2y                                Negotiated settlement & Target partial acquiescence       1.37
+1–2y                                Stalemate                                 3.71
+2–5y                                Negotiated settlement                     1.33
+2–5y                                Negotiated settlement & Sender capitulation       0.67
+2–5y                                Negotiated settlement & Target complete acquiescence       1.00
+2–5y                                Negotiated settlement & Target partial acquiescence       3.33
+5–10y                               Negotiated settlement                     0.65
+5–10y                               Negotiated settlement & Sender capitulation       0.32
+5–10y                               Negotiated settlement & Target complete acquiescence       0.48
+5–10y                               Negotiated settlement & Target partial acquiescence       1.62
+5–10y                               Stalemate                                 4.36
+10–20y                              Negotiated settlement                     0.34
+10–20y                              Negotiated settlement & Sender capitulation       0.17
+10–20y                              Negotiated settlement & Target complete acquiescence       0.26
+10–20y                              Negotiated settlement & Target partial acquiescence       0.86
+10–20y                              Sender capitulation                       4.12
+10–20y                              Stalemate                                 2.32
+20+y                                Negotiated settlement                     0.15
+20+y                                Negotiated settlement & Sender capitulation       0.08
+20+y                                Negotiated settlement & Target complete acquiescence       0.11
+20+y                                Negotiated settlement & Target partial acquiescence       0.38
+20+y                                Sender capitulation                       1.81
+20+y                                Stalemate                                 1.02
+20+y                                Target complete acquiescence              3.86
+20+y                                Target partial acquiescence               3.59
+=================================================================

@@ -65,11 +65,12 @@ for col in bool_cols:
 # ---------------------------------------------------------------------------
 # 4. Helper: split a delimited cell into a clean list of tokens
 # ---------------------------------------------------------------------------
-def split_cell(value: str) -> list[str]:
+def split_cell(value) -> list[str]:
     """Split on commas or semicolons, strip whitespace and quotes."""
-    tokens = re.split(r"[;,]", value)
+    if pd.isna(value):
+        return []
+    tokens = re.split(r"[;,]", str(value))
     return [t.strip().strip('"').strip("'") for t in tokens if t.strip()]
-
 
 
 # Multilateralism handling of multi-valued column
@@ -186,9 +187,9 @@ target_lookup, case_target = build_lookup_and_junction(
 
 
 # ── Outcome ──────────────────────────────────────────────────────────────────
-# Normalize "Blank" to "missing" in the outcome column
+# Normalize "Blank" to NULL in the outcome column
 df["outcome"] = df["outcome"].str.strip()
-df["outcome"] = df["outcome"].replace("Blank", "missing")
+df["outcome"] = df["outcome"].replace("Blank", pd.NA)
 
 outcome_lookup, case_outcome = build_lookup_and_junction(
     df, "caseid", "outcome", "outcome_type"
@@ -263,12 +264,21 @@ case_df = df[[
     "targetsalience", "costtarget",
 ]].copy()
 
-# Strip whitespace from requirementter to normalize "Clear " to "Clear"
+# Strip whitespace from requirementter to normalize "Clear " to "Clear" and "missing" to NULL
 case_df["requirementter"] = case_df["requirementter"].str.strip()
+case_df["requirementter"] = case_df["requirementter"].replace("missing", pd.NA)
 
-# Normalize "Blank" to "missing" in the cost_sender column
+# Normalize "Blank" to NULL in the cost_sender column
 case_df["costsender"] = case_df["costsender"].str.strip()
-case_df["costsender"] = case_df["costsender"].replace("Blank", "missing")
+case_df["costsender"] = case_df["costsender"].replace("Blank", pd.NA)
+
+# Normalize all empty sourceimp cells with NULL
+case_df["sourceter"] = case_df["sourceter"].str.strip()
+case_df["sourceter"] = case_df["sourceter"].replace(r"^\s*$", pd.NA, regex=True)
+
+# Normalize all empty comment cells with NULL
+case_df["comment"] = case_df["comment"].str.strip()
+case_df["comment"] = case_df["comment"].replace(r"^\s*$", pd.NA, regex=True)
 
 case_df = case_df.rename(columns={
     "caseid"        : "case_id",

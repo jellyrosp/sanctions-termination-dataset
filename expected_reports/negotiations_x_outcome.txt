@@ -1,0 +1,21 @@
+=================================================================
+EXPECTED FREQUENCY CHECK
+=================================================================
+Table shape          : 2 rows × 8 cols (16 cells, df=7)
+Grand total (N)      : 289
+Threshold source     : adaptive (medium table 10–24 cells)
+Cells below E=5.0   : 7 / 16 (43.8%) [limit: 15%]
+Minimum expected     : 0.70 [hard minimum: 1.0]
+Result               : FAIL
+
+Cells with expected < 5.0:
+Row                                 Col                                   Expected
+----------------------------------------------------------------------------------
+Has Negotiations                    Negotiated settlement                     2.60
+Has Negotiations                    Negotiated settlement & Sender capitulation       1.30
+Has Negotiations                    Negotiated settlement & Target complete acquiescence       1.95
+Lacks Negotiations                  Negotiated settlement                     1.40
+Lacks Negotiations                  Negotiated settlement & Sender capitulation       0.70
+Lacks Negotiations                  Negotiated settlement & Target complete acquiescence       1.05
+Lacks Negotiations                  Negotiated settlement & Target partial acquiescence       3.49
+=================================================================

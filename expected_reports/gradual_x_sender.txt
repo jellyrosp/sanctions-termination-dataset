@@ -1,0 +1,29 @@
+=================================================================
+EXPECTED FREQUENCY CHECK
+=================================================================
+Table shape          : 2 rows × 13 cols (26 cells, df=12)
+Grand total (N)      : 397
+Threshold source     : adaptive (large table ≥ 25 cells)
+Cells below E=5.0   : 15 / 26 (57.7%) [limit: 10%]
+Minimum expected     : 0.43 [hard minimum: 1.0]
+Result               : FAIL
+
+Cells with expected < 5.0:
+Row                                 Col                                   Expected
+----------------------------------------------------------------------------------
+Gradual                             CommSec                                   3.03
+Gradual                             EAC                                       0.43
+Gradual                             ECOWAS                                    3.90
+Gradual                             EEC                                       2.17
+Gradual                             LAS                                       1.30
+Gradual                             OAS                                       1.30
+Gradual                             SADC                                      0.43
+Gradual                             UM                                        0.43
+Not Gradual                         CommSec                                   3.97
+Not Gradual                         EAC                                       0.57
+Not Gradual                         EEC                                       2.83
+Not Gradual                         LAS                                       1.70
+Not Gradual                         OAS                                       1.70
+Not Gradual                         SADC                                      0.57
+Not Gradual                         UM                                        0.57
+=================================================================

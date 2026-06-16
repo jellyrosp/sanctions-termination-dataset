@@ -1,0 +1,95 @@
+=================================================================
+EXPECTED FREQUENCY CHECK
+=================================================================
+Table shape          : 12 rows × 8 cols (96 cells, df=77)
+Grand total (N)      : 291
+Threshold source     : adaptive (large table ≥ 25 cells)
+Cells below E=5.0   : 81 / 96 (84.4%) [limit: 10%]
+Minimum expected     : 0.00 [hard minimum: 1.0]
+Result               : FAIL
+
+Cells with expected < 5.0:
+Row                                 Col                                   Expected
+----------------------------------------------------------------------------------
+EU                                  Negotiated settlement                     0.19
+EU                                  Negotiated settlement & Sender capitulation       0.10
+EU                                  Negotiated settlement & Target complete acquiescence       0.14
+EU                                  Negotiated settlement & Target partial acquiescence       0.48
+EU                                  Sender capitulation                       2.31
+EU                                  Stalemate                                 1.30
+EU                                  Target complete acquiescence              4.91
+EU                                  Target partial acquiescence               4.57
+EU & RO & UN & USA                  Negotiated settlement                     0.37
+EU & RO & UN & USA                  Negotiated settlement & Sender capitulation       0.19
+EU & RO & UN & USA                  Negotiated settlement & Target complete acquiescence       0.28
+EU & RO & UN & USA                  Negotiated settlement & Target partial acquiescence       0.93
+EU & RO & UN & USA                  Sender capitulation                       4.45
+EU & RO & UN & USA                  Stalemate                                 2.51
+EU & RO & USA                       Negotiated settlement                     0.52
+EU & RO & USA                       Negotiated settlement & Sender capitulation       0.26
+EU & RO & USA                       Negotiated settlement & Target complete acquiescence       0.39
+EU & RO & USA                       Negotiated settlement & Target partial acquiescence       1.31
+EU & RO & USA                       Stalemate                                 3.53
+EU & UN                             Negotiated settlement                     0.07
+EU & UN                             Negotiated settlement & Sender capitulation       0.03
+EU & UN                             Negotiated settlement & Target complete acquiescence       0.05
+EU & UN                             Negotiated settlement & Target partial acquiescence       0.17
+EU & UN                             Sender capitulation                       0.82
+EU & UN                             Stalemate                                 0.46
+EU & UN                             Target complete acquiescence              1.75
+EU & UN                             Target partial acquiescence               1.63
+EU & UN & USA                       Negotiated settlement                     0.45
+EU & UN & USA                       Negotiated settlement & Sender capitulation       0.23
+EU & UN & USA                       Negotiated settlement & Target complete acquiescence       0.34
+EU & UN & USA                       Negotiated settlement & Target partial acquiescence       1.13
+EU & UN & USA                       Stalemate                                 3.06
+EU & USA                            Negotiated settlement                     0.51
+EU & USA                            Negotiated settlement & Sender capitulation       0.25
+EU & USA                            Negotiated settlement & Target complete acquiescence       0.38
+EU & USA                            Negotiated settlement & Target partial acquiescence       1.27
+EU & USA                            Stalemate                                 3.43
+RO                                  Negotiated settlement                     0.08
+RO                                  Negotiated settlement & Sender capitulation       0.04
+RO                                  Negotiated settlement & Target complete acquiescence       0.06
+RO                                  Negotiated settlement & Target partial acquiescence       0.21
+RO                                  Sender capitulation                       0.99
+RO                                  Stalemate                                 0.56
+RO                                  Target complete acquiescence              2.10
+RO                                  Target partial acquiescence               1.96
+RO & UN & USA                       Negotiated settlement                     0.03
+RO & UN & USA                       Negotiated settlement & Sender capitulation       0.01
+RO & UN & USA                       Negotiated settlement & Target complete acquiescence       0.02
+RO & UN & USA                       Negotiated settlement & Target partial acquiescence       0.07
+RO & UN & USA                       Sender capitulation                       0.33
+RO & UN & USA                       Stalemate                                 0.19
+RO & UN & USA                       Target complete acquiescence              0.70
+RO & UN & USA                       Target partial acquiescence               0.65
+RO & USA                            Negotiated settlement                     0.03
+RO & USA                            Negotiated settlement & Sender capitulation       0.01
+RO & USA                            Negotiated settlement & Target complete acquiescence       0.02
+RO & USA                            Negotiated settlement & Target partial acquiescence       0.07
+RO & USA                            Sender capitulation                       0.33
+RO & USA                            Stalemate                                 0.19
+RO & USA                            Target complete acquiescence              0.70
+RO & USA                            Target partial acquiescence               0.65
+UN                                  Negotiated settlement                     0.00
+UN                                  Negotiated settlement & Sender capitulation       0.00
+UN                                  Negotiated settlement & Target complete acquiescence       0.00
+UN                                  Negotiated settlement & Target partial acquiescence       0.00
+UN                                  Sender capitulation                       0.00
+UN                                  Stalemate                                 0.00
+UN                                  Target complete acquiescence              0.00
+UN                                  Target partial acquiescence               0.00
+UN & USA                            Negotiated settlement                     0.04
+UN & USA                            Negotiated settlement & Sender capitulation       0.02
+UN & USA                            Negotiated settlement & Target complete acquiescence       0.03
+UN & USA                            Negotiated settlement & Target partial acquiescence       0.10
+UN & USA                            Sender capitulation                       0.49
+UN & USA                            Stalemate                                 0.28
+UN & USA                            Target complete acquiescence              1.05
+UN & USA                            Target partial acquiescence               0.98
+USA                                 Negotiated settlement                     1.70
+USA                                 Negotiated settlement & Sender capitulation       0.85
+USA                                 Negotiated settlement & Target complete acquiescence       1.28
+USA                                 Negotiated settlement & Target partial acquiescence       4.26
+=================================================================
