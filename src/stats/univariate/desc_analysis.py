@@ -91,13 +91,14 @@ def get_req_termination_distribution(con: sqlite3.Connection) -> pd.DataFrame:
     """
     Univariate frequency distribution of sanction regimes by
     requirement termination clarity.
-    Values: Clear, Ambiguous, Missing (NULL).
+    Clear = 1,  Ambiguous = 0, NULL = Missing.
     """
     sql = """
         SELECT
             CASE
-                WHEN requirement_termination IS NULL THEN 'Missing'
-                ELSE requirement_termination
+                WHEN requirement_termination = 1 THEN 'Clear'
+                WHEN requirement_termination = 0 THEN 'Ambiguous'
+                ELSE 'Missing'    
             END AS req_termination,
             COUNT(*) AS n_cases
         FROM RegimeCase

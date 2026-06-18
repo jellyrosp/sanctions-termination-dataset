@@ -60,7 +60,7 @@ def get_review_x_duration(con: sqlite3.Connection) -> pd.DataFrame:
     return _build_contingency(review, duration, "Review", col_order=labels)
 #print(get_review_x_duration(con))    
 
-
+ 
 # ── requirement_termination x duration ───────────────────────────────────────
 def get_req_termination_x_duration(con: sqlite3.Connection) -> pd.DataFrame:
     """
@@ -69,11 +69,13 @@ def get_req_termination_x_duration(con: sqlite3.Connection) -> pd.DataFrame:
     """
     duration = _get_duration_per_case(con)
     req = _get_scalar_per_case(con, "requirement_termination").map(
-        lambda x: "Missing" if (pd.isna(x) or x == "") else str(x).strip()
+        lambda x: "Missing" if pd.isna(x) else ("Clear" if bool(x) else "Ambiguous")
     )
     labels = ["0–6m", "6m–1y", "1–2y", "2–5y", "5–10y", "10–20y", "20+y"]
     return _build_contingency(req, duration, "Requirement Termination", col_order=labels)
-#print(get_req_termination_x_duration(con))    
+#print(get_req_termination_x_duration(con))
+
+
 
 #============================================================
 #============================================================
@@ -404,3 +406,4 @@ def get_duration_x_outcome(con: sqlite3.Connection) -> pd.DataFrame:
 #print(get_expiry_x_outcome(con))
 # print(collapse_rare_columns(get_expiry_x_outcome(con)))
 #print(remove_rel_freq(get_expiry_x_outcome(con)))
+

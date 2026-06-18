@@ -264,9 +264,9 @@ case_df = df[[
     "targetsalience", "costtarget",
 ]].copy()
 
-# Strip whitespace from requirementter to normalize "Clear " to "Clear" and "missing" to NULL
-case_df["requirementter"] = case_df["requirementter"].str.strip()
-case_df["requirementter"] = case_df["requirementter"].replace("missing", pd.NA)
+# Normalize requirementter as boolean variable: "Clear" = 1, "Ambiguous" = 0, "missing" to NULL
+case_df['requirementter'] = case_df['requirementter'].str.strip().map({'Ambiguous': 0, 'Clear': 1})
+case_df['requirementter'] = case_df['requirementter'].astype("Int64")
 
 # Normalize "Blank" to NULL in the cost_sender column
 case_df["costsender"] = case_df["costsender"].str.strip()
@@ -348,7 +348,7 @@ CREATE TABLE IF NOT EXISTS RegimeCase (
     gradual                 INTEGER,
     expiry                  INTEGER,
     review                  INTEGER,
-    requirement_termination TEXT,
+    requirement_termination INTEGER,
     negotiations            INTEGER,
     comment                 TEXT,
     source_imp              TEXT,

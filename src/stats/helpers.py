@@ -2,6 +2,8 @@ import sqlite3
 import pandas as pd
 import decode
 import numpy as np
+from scipy.stats import norm
+from scipy import stats as sstats
 from pathlib import Path
 import sys
 
@@ -23,9 +25,10 @@ def _get_scalar_per_case(con: sqlite3.Connection, column: str) -> pd.Series:
 
 def _get_multilateralism_per_case(con: sqlite3.Connection) -> pd.Series:
     """
-    Returns a Series indexed by case_id with collapsed multilateralism label.
-    Multiple multilateralism values per case are collapsed into a sorted
-    combination string.
+    Returns a Series indexed by case_id with multilateralism label.
+    Cases with a single multilateralism value → 'Unilateral'.
+    Cases with more than one value → 'Multilateral'.
+    Cases with no value → 'Missing'.
     """
     sql = """
         SELECT case_id, multilateralism_id
@@ -35,7 +38,8 @@ def _get_multilateralism_per_case(con: sqlite3.Connection) -> pd.Series:
 
     multilat_grouped = (
         df.groupby("case_id")["multilateralism_id"]
-        .apply(lambda x: " & ".join(sorted(x)))
+        .count()
+        .map(lambda n: "Unilateral" if n == 1 else "Multilateral")
         .rename("multilateralism")
     )
 
@@ -45,7 +49,7 @@ def _get_multilateralism_per_case(con: sqlite3.Connection) -> pd.Series:
     merged = cases_df.merge(multilat_grouped, on="case_id", how="left")
     merged["multilateralism"] = merged["multilateralism"].fillna("Missing")
 
-    return merged.set_index("case_id")["multilateralism"]    
+    return merged.set_index("case_id")["multilateralism"]
 
 
 def _build_contingency(
@@ -517,6 +521,268 @@ def report_expected_frequency_issues(
     return passed
 
 
+
+def remap_columns(
+    df: pd.DataFrame,
+    mapping: dict[str, str | None],
+) -> pd.DataFrame:
+    """
+    Remap and collapse columns according to an explicit mapping.
+
+    Args:
+        df      : Contingency table with absolute frequencies only.
+        mapping : Dict of {old_col: new_col}. Use None to drop a column.
+                  Columns not mentioned are kept as-is.
+
+    Returns:
+        Remapped DataFrame with absolute frequencies.
+    """
+
+    out_cols: dict[str, pd.Series] = {}
+
+    for col in df.columns:
+        target = mapping.get(col, col)  # default: keep as-is
+
+        if target is None:              # explicit drop
+            continue
+
+        if target in out_cols:          # merge into existing column
+            out_cols[target] = out_cols[target] + df[col]
+        else:
+            out_cols[target] = df[col].copy()
+
+    return pd.DataFrame(out_cols, index=df.index)
+
+
+def remap_rows(
+    df: pd.DataFrame,
+    mapping: dict[str, str | None],
+) -> pd.DataFrame:
+    """
+    Remap and collapse rows according to an explicit mapping.
+
+    Args:
+        df      : Contingency table with absolute frequencies only.
+        mapping : Dict of {old_row: new_row}. Use None to drop a row.
+                  Rows not mentioned are kept as-is.
+
+    Returns:
+        Remapped DataFrame with absolute frequencies.
+    """
+
+    out_rows: dict[str, pd.Series] = {}
+
+    for row in df.index:
+        target = mapping.get(row, row)  # default: keep as-is
+
+        if target is None:              # explicit drop
+            continue
+
+        if target in out_rows:          # merge into existing row
+            out_rows[target] = out_rows[target] + df.loc[row]
+        else:
+            out_rows[target] = df.loc[row].copy()
+
+    return pd.DataFrame(out_rows, index=df.columns).T
+
+
+
+def normalize_table_for_visual(
+    df: pd.DataFrame,
+    mapping: dict[str, str | None],
+    total_label: str = "Total",
+) -> pd.DataFrame:
+    """
+    Collapse/group columns of a visual-ready contingency table according to
+    a mapping, preserving the (category, 'Abs.'/'Rel(%)') multiindex structure.
+
+    Args:
+        df      : Table with multiindex columns (category, 'Abs.'/'Rel(%)'),
+                  where 'Rel(%)' holds row-wise percentages. May include a
+                  'Missing' category and a row-total column (total_label).
+        mapping : Dict of {old_category: new_category}. Use None to drop
+                  a category. Categories not mentioned are kept as-is
+                  (including 'Missing', unless explicitly mapped to None).
+        total_label : Name of the row-total column to exclude from
+                  collapsing and recompute at the end.
+
+    Returns:
+        DataFrame with the same multiindex structure, columns collapsed
+        per the mapping, percentages recalculated row-wise from the new
+        absolute counts, and the total column rebuilt.
+    """
+
+    categories = [c for c in df.columns.get_level_values(0).unique()
+                  if c != total_label]
+
+    # 1. collapse the Abs. block using the same merge logic as remap_columns
+    abs_cols: dict[str, pd.Series] = {}
+
+    for cat in categories:
+        target = mapping.get(cat, cat)  # default: keep as-is
+
+        if target is None:              # explicit drop
+            continue
+
+        abs_series = df[(cat, "Abs.")]
+
+        if target in abs_cols:          # merge into existing category
+            abs_cols[target] = abs_cols[target] + abs_series
+        else:
+            abs_cols[target] = abs_series.copy()
+
+    abs_df = pd.DataFrame(abs_cols, index=df.index)
+
+    # 2. recompute row-wise percentages from the collapsed absolute counts
+    row_totals = abs_df.sum(axis=1)
+    pct_df = abs_df.div(row_totals, axis=0).mul(100).round(1)
+
+    # 3. rebuild the (category, 'Abs.'/'Rel(%)') multiindex, preserving column order
+    out_cols = pd.MultiIndex.from_product(
+        [abs_df.columns, ["Abs.", "Rel(%)"]]
+    )
+    out = pd.DataFrame(index=df.index, columns=out_cols)
+
+    for cat in abs_df.columns:
+        out[(cat, "Abs.")]    = abs_df[cat]
+        out[(cat, "Rel(%)")]  = pct_df[cat]
+
+    # 4. rebuild the row-total column
+    out[(total_label, "")] = row_totals
+
+    return out
+
+
+
+
+
+## INFERENTIAL TESTS
+
+
+def cochran_armitage(table, scores=None):
+    """
+    Cochran-Armitage trend test.
+
+    Parameters
+    ----------
+    table : DataFrame or ndarray
+        2 x k contingency table.
+
+        Row 0 = group A
+        Row 1 = group B
+
+        Columns must already be ordered.
+
+    scores : sequence, optional
+        Ordinal scores for columns.
+        Default: 0,1,2,...,k-1
+
+    Returns
+    -------
+    dict
+        {
+            'z': float,
+            'p_value': float,
+            'r': float
+        }
+    """
+    table = np.asarray(table)
+
+    if table.shape[0] != 2:
+        raise ValueError(
+            "Cochran-Armitage requires a 2×k table."
+        )
+
+    k = table.shape[1]
+
+    if scores is None:
+        scores = np.arange(k)
+
+    scores = np.asarray(scores, dtype=float)
+
+    n_j = table.sum(axis=0)      # column totals
+    N = n_j.sum()
+
+    x_j = table[1, :]            # successes
+    X = x_j.sum()
+
+    p_hat = X / N
+
+    numerator = np.sum(
+        scores * (x_j - n_j * p_hat)
+    )
+
+    score_mean = np.sum(scores * n_j) / N
+
+    variance = (
+        p_hat
+        * (1 - p_hat)
+        * np.sum(
+            n_j * (scores - score_mean) ** 2
+        )
+    )
+
+    z = numerator / np.sqrt(variance)
+
+    p_value = 2 * (1 - norm.cdf(abs(z)))
+
+    # effect size analogous to correlation
+    r = abs(z) / np.sqrt(N)
+
+    return {
+        "z": float(z),
+        "p_value": float(p_value),
+        "r": float(r),
+    }
+
+
+
+def cramers_v(
+    table,
+    chi2: float | None = None,
+    bias_correction: bool = False,
+) -> float:
+    """
+    Cramer's V effect size for a contingency table.
+
+    Parameters
+    ----------
+    table : array-like or DataFrame
+        Contingency table.
+    chi2 : float, optional
+        Precomputed chi-square statistic.
+    bias_correction : bool, default=False
+        Apply Bergsma (2013) small-sample correction.
+
+    Returns
+    -------
+    float
+    """
+    table = np.asarray(table)
+
+    if chi2 is None:
+        chi2, _, _, _ = sstats.chi2_contingency(table)
+
+    n = table.sum()
+    r, c = table.shape
+
+    if not bias_correction:
+        return np.sqrt(chi2 / (n * min(r - 1, c - 1)))
+
+    # Bergsma correction
+    phi2 = chi2 / n
+
+    phi2_corr = max(
+        0,
+        phi2 - ((r - 1) * (c - 1)) / (n - 1)
+    )
+
+    r_corr = r - ((r - 1) ** 2) / (n - 1)
+    c_corr = c - ((c - 1) ** 2) / (n - 1)
+
+    denom = min(r_corr - 1, c_corr - 1)
+
+    return np.sqrt(phi2_corr / denom) if denom > 0 else 0.0
 
 
 
